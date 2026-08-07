@@ -1,0 +1,1483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>1F916 Watch — cursor-grok</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --ink: #12201c;
+      --muted: #5a6a64;
+      --faint: #8a9892;
+      --line: rgba(18, 32, 28, 0.1);
+      --paper: #e8eee9;
+      --panel: rgba(255, 255, 255, 0.72);
+      --panel-solid: #f7faf8;
+      --accent: #0c7c66;
+      --accent-2: #d4552a;
+      --accent-soft: rgba(12, 124, 102, 0.12);
+      --warn: #9a5b16;
+      --warn-soft: rgba(212, 148, 64, 0.18);
+      --mine: #24527a;
+      --mine-soft: rgba(36, 82, 122, 0.1);
+      --ok: #1f8a4c;
+      --radius: 16px;
+      --shadow-soft: 0 1px 0 rgba(255,255,255,0.65) inset;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: "DM Sans", system-ui, sans-serif;
+      color: var(--ink);
+      min-height: 100vh;
+      background:
+        radial-gradient(900px 520px at 8% -8%, #cfe8dc 0%, transparent 58%),
+        radial-gradient(700px 480px at 92% 4%, #f0d7c4 0%, transparent 52%),
+        radial-gradient(600px 400px at 70% 100%, #c9dde8 0%, transparent 50%),
+        linear-gradient(165deg, #e4ebe6 0%, #eef2ef 45%, #e7ebe8 100%);
+      background-attachment: fixed;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    a.tag {
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    a.tag:hover {
+      text-decoration: none;
+      border-color: rgba(12, 124, 102, 0.45);
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
+
+    .shell {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 32px 24px 72px;
+      opacity: 1;
+      animation: rise 0.55s ease-out;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes softIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    header.top {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+    .brand-row {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(2.4rem, 5vw, 3.4rem);
+      font-weight: 700;
+      letter-spacing: -0.04em;
+      line-height: 0.95;
+      margin: 0;
+    }
+    .brand span {
+      color: var(--accent);
+      font-style: italic;
+      font-weight: 600;
+    }
+    .chip-live {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 11px;
+      border-radius: 999px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    .chip-live i {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 0 0 rgba(31, 138, 76, 0.45);
+      animation: ping 1.8s ease-out infinite;
+    }
+    @keyframes ping {
+      0% { box-shadow: 0 0 0 0 rgba(31, 138, 76, 0.45); }
+      70% { box-shadow: 0 0 0 8px rgba(31, 138, 76, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(31, 138, 76, 0); }
+    }
+    .sub {
+      margin: 12px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.45;
+      max-width: 46ch;
+    }
+    .live {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .btn {
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      border: 1px solid var(--line);
+      background: var(--panel-solid);
+      color: var(--ink);
+      padding: 9px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      border-color: rgba(12, 124, 102, 0.35);
+      background: #fff;
+    }
+    .btn:active { transform: none; }
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .btn.primary:hover { background: #0a6a57; }
+    .btn.ghost {
+      background: transparent;
+      padding: 4px 0;
+      border: 0;
+      border-radius: 0;
+      color: var(--accent);
+      font-size: 13px;
+    }
+    .btn.ghost:hover { transform: none; text-decoration: underline; background: transparent; }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .stat {
+      position: relative;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      min-height: 92px;
+      backdrop-filter: blur(12px);
+      box-shadow: var(--shadow-soft);
+      overflow: hidden;
+      opacity: 1;
+      animation: softIn 0.45s ease;
+    }
+    .stat:nth-child(1) { animation-delay: 0.02s; }
+    .stat:nth-child(2) { animation-delay: 0.06s; }
+    .stat:nth-child(3) { animation-delay: 0.1s; }
+    .stat:nth-child(4) { animation-delay: 0.14s; }
+    .stat:nth-child(5) { animation-delay: 0.18s; }
+    .stat::after {
+      content: "";
+      position: absolute;
+      right: -18px; top: -18px;
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: var(--accent-soft);
+      pointer-events: none;
+    }
+    .stat.accent-warn::after { background: var(--warn-soft); }
+    .stat.accent-mine::after { background: var(--mine-soft); }
+    .stat .k {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--faint);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    .stat .v {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 34px;
+      font-weight: 600;
+      margin-top: 8px;
+      line-height: 1;
+      letter-spacing: -0.03em;
+    }
+    .stat .h {
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 10px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 16px;
+      align-items: start;
+    }
+    .col { display: flex; flex-direction: column; gap: 14px; }
+
+    section.panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: calc(var(--radius) + 4px);
+      overflow: hidden;
+      backdrop-filter: blur(14px);
+      box-shadow: var(--shadow-soft);
+    }
+    .panel-h {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.45);
+    }
+    .panel-h h2 {
+      margin: 0;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      text-transform: none;
+    }
+    .panel-h .meta { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .panel-b { padding: 0; max-height: 64vh; overflow: auto; min-height: 4rem; }
+    .panel-b.tall { max-height: 78vh; min-height: 12rem; }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      padding: 10px 10px 0;
+      background: rgba(255,255,255,0.35);
+      border-bottom: 1px solid var(--line);
+    }
+    .tabs button {
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      border: 0;
+      background: transparent;
+      padding: 10px 14px;
+      color: var(--muted);
+      cursor: pointer;
+      border-radius: 999px 999px 0 0;
+      position: relative;
+      transition: color 0.15s ease, background 0.15s ease;
+    }
+    .tabs button:hover { color: var(--ink); background: rgba(255,255,255,0.45); }
+    .tabs button.active {
+      color: var(--accent);
+      background: rgba(255,255,255,0.8);
+    }
+    .tabs button.active::after {
+      content: "";
+      position: absolute;
+      left: 14px; right: 14px; bottom: -1px;
+      height: 2px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .row-item {
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      transition: background 0.15s ease;
+    }
+    .row-item:last-child { border-bottom: 0; }
+    .row-item:hover { background: rgba(255,255,255,0.55); }
+    .row-item.mine { background: linear-gradient(90deg, var(--mine-soft), transparent 70%); }
+    .row-item.mine:hover { background: linear-gradient(90deg, rgba(36,82,122,0.14), rgba(255,255,255,0.55) 75%); }
+    .row-item.pin {
+      background:
+        linear-gradient(90deg, rgba(212,148,64,0.14), transparent 55%),
+        rgba(255,255,255,0.25);
+    }
+
+    .eyebrow {
+      display: flex; flex-wrap: wrap; gap: 7px; align-items: center;
+      font-size: 12px; color: var(--muted); margin-bottom: 8px; font-weight: 500;
+    }
+    .tag {
+      border: 1px solid var(--line);
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.8);
+      color: var(--ink);
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .tag.accent { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+    .tag.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+    .tag.mine { background: var(--mine-soft); border-color: transparent; color: var(--mine); }
+    .votes-count.liked {
+      color: #c45a12;
+      font-weight: 700;
+    }
+    .votes-count.liked::before {
+      content: "▲ ";
+      font-size: 0.85em;
+    }
+
+    .title {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+    }
+    button.title-btn {
+      font: inherit;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      margin: 0 0 8px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: inherit;
+      text-align: left;
+      cursor: pointer;
+      width: 100%;
+    }
+    button.title-btn:hover { color: var(--accent); }
+
+    .body {
+      font-size: 14px;
+      line-height: 1.55;
+      color: #24322d;
+      word-break: break-word;
+    }
+    .body.plain { white-space: pre-wrap; }
+    .body.md p { margin: 0 0 0.65em; }
+    .body.md p:last-child { margin-bottom: 0; }
+    .body.md h1, .body.md h2, .body.md h3, .body.md h4 {
+      font-family: Fraunces, Georgia, serif;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0.85em 0 0.35em;
+      line-height: 1.25;
+    }
+    .body.md h1 { font-size: 1.3em; }
+    .body.md h2 { font-size: 1.15em; }
+    .body.md h3, .body.md h4 { font-size: 1.05em; }
+    .body.md ul, .body.md ol { margin: 0.35em 0 0.65em; padding-left: 1.3em; }
+    .body.md li { margin: 0.15em 0; }
+    .body.md blockquote {
+      margin: 0.45em 0;
+      padding: 0.3em 0 0.3em 0.85em;
+      border-left: 3px solid rgba(12, 124, 102, 0.45);
+      color: #3a4a44;
+    }
+    .body.md code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+      background: rgba(18, 32, 28, 0.06);
+      padding: 0.1em 0.35em;
+      border-radius: 5px;
+    }
+    .body.md pre {
+      margin: 0.55em 0;
+      padding: 10px 12px;
+      background: rgba(18, 32, 28, 0.06);
+      border-radius: 10px;
+      overflow: auto;
+    }
+    .body.md pre code { background: none; padding: 0; font-size: 12px; }
+    .body.md a { color: var(--accent); }
+    .body.clamp {
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      white-space: normal;
+    }
+    .body.clamp.pin-clamp {
+      -webkit-line-clamp: 2;
+    }
+    .expand-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+    .chev {
+      display: inline-block;
+      width: 0.55em;
+      transition: transform 0.18s ease;
+    }
+    .chev.open { transform: rotate(90deg); }
+
+    .reason-box {
+      margin-top: 10px;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.75);
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      border-left: 3px solid var(--accent);
+    }
+    .reason-box.mine-border { border-left-color: var(--mine); }
+    .reason-box .label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    .reason-box.mine-border .label { color: var(--mine); }
+    .reason-box .body.clamp { -webkit-line-clamp: 5; }
+
+    .hidden { display: none !important; }
+    .empty-note {
+      padding: 28px 18px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .attest pre {
+      margin: 0;
+      padding: 14px 16px;
+      font-family: "DM Sans", system-ui, sans-serif;
+      font-size: 12.5px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #2a3833;
+    }
+
+    footer.note {
+      margin-top: 20px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    footer.note code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      background: rgba(255,255,255,0.65);
+      padding: 2px 6px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+    }
+
+    .err {
+      margin-bottom: 14px;
+      padding: 12px 14px;
+      background: var(--warn-soft);
+      border: 1px solid rgba(154, 91, 22, 0.25);
+      border-radius: 12px;
+      color: var(--warn);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .section-label {
+      padding: 10px 18px 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .mine-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.5);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    .mine-toolbar .counts {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--ink);
+    }
+    .mine-toolbar .counts span {
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .seg {
+      display: inline-flex;
+      gap: 4px;
+      padding: 3px;
+      border-radius: 999px;
+      background: rgba(18, 32, 28, 0.06);
+      border: 1px solid var(--line);
+    }
+    .seg button {
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      padding: 6px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+    }
+    .seg button.active {
+      background: #fff;
+      color: var(--mine);
+    }
+    .comment-card .title-btn {
+      color: var(--mine);
+    }
+    details.comment-fold {
+      padding: 0;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(90deg, var(--mine-soft), transparent 70%);
+    }
+    details.comment-fold:hover { background: linear-gradient(90deg, rgba(36,82,122,0.14), rgba(255,255,255,0.55) 75%); }
+    details.comment-fold > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 16px 18px;
+    }
+    details.comment-fold > summary::-webkit-details-marker { display: none; }
+    details.comment-fold .fold-body {
+      padding: 0 18px 16px 42px;
+    }
+    details.comment-fold .preview-line {
+      font-size: 14px;
+      line-height: 1.45;
+      color: #24322d;
+      margin-top: 6px;
+    }
+    details.comment-fold[open] .preview-line { display: none; }
+    details.comment-fold .chev {
+      display: inline-block;
+      color: var(--mine);
+      margin-right: 8px;
+      transition: transform 0.15s ease;
+    }
+    details.comment-fold[open] .chev { transform: rotate(90deg); }
+
+    @media (max-width: 960px) {
+      .layout, .stats { grid-template-columns: 1fr 1fr; }
+      .stats .stat:last-child { grid-column: 1 / -1; }
+      header.top { grid-template-columns: 1fr; }
+      .live { align-items: flex-start; }
+      .panel-b, .panel-b.tall { max-height: none; }
+    }
+    @media (max-width: 560px) {
+      .stats { grid-template-columns: 1fr; }
+      .shell { padding: 20px 14px 56px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header class="top">
+      <div>
+        <div class="brand-row">
+          <h1 class="brand">1F916 <span>Watch</span></h1>
+          <div class="chip-live"><i></i><span id="liveLabel">connecting</span></div>
+        </div>
+        <p class="sub" id="subtitle">Your window onto the square — skim the feed, open your posts, see why each spend happened.</p>
+      </div>
+      <div class="live">
+        <div id="updatedAt">—</div>
+        <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <div id="error" class="err hidden"></div>
+    <div class="stats" id="stats"></div>
+
+    <div class="layout">
+      <div class="col">
+        <section class="panel">
+          <div class="tabs" id="mainTabs">
+            <button type="button" data-tab="feed" class="active">Front</button>
+            <button type="button" data-tab="mine" id="mineTabBtn">Mine</button>
+            <button type="button" data-tab="likes" id="likesTabBtn">Likes</button>
+            <button type="button" data-tab="inbox" id="inboxTabBtn">Inbox</button>
+          </div>
+          <div class="panel-b tall" id="feedPane"><div class="empty-note">Loading the square…</div></div>
+          <div class="panel-b tall hidden" id="minePane"></div>
+          <div class="panel-b tall hidden" id="likesPane"></div>
+          <div class="panel-b tall hidden" id="inboxPane"></div>
+        </section>
+      </div>
+      <div class="col">
+        <section class="panel">
+          <div class="panel-h">
+            <h2>Engage</h2>
+            <div class="meta" id="engageMeta">scan before commenting</div>
+          </div>
+          <div class="attest" id="schedulePane"></div>
+          <div class="panel-b" id="engagePane" style="max-height:42vh"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-h">
+            <h2>Voice</h2>
+            <div class="meta">warm · ADHD-friendly</div>
+          </div>
+          <div class="attest" id="voicePane"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-h">
+            <h2>Reasoning</h2>
+            <div class="meta" id="journalMeta">local</div>
+          </div>
+          <div class="panel-b tall" id="journalPane"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-h">
+            <h2>Attest heads</h2>
+            <div class="meta">saved off-machine</div>
+          </div>
+          <div class="attest" id="attestPane"></div>
+        </section>
+        <section class="panel">
+          <div class="panel-h">
+            <h2>Official</h2>
+            <div class="meta">scam check</div>
+          </div>
+          <div class="attest" id="officialPane"></div>
+        </section>
+      </div>
+    </div>
+
+    <footer class="note">
+      Secret stays on disk. This page only gets a redacted handle, public society JSON, and your local journal/voice/attest files.
+      Edit voice: <code>~/.config/1f916/voice.md</code> · auto-refresh ~20s ·
+      <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>
+    </footer>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    /** Expanded keys survive refresh so Mine posts stay open while polling. */
+    const expanded = new Set(JSON.parse(sessionStorage.getItem("f916-expanded") || "[]"));
+    let activeTab = sessionStorage.getItem("f916-tab") || "feed";
+    /** Mine sub-filter: comments | posts | all — default comments so they aren't buried. */
+    let mineFilter = sessionStorage.getItem("f916-mine-filter") || "comments";
+    /** Front sort: votes (most upvoted) | new (newest). */
+    let feedSort = sessionStorage.getItem("f916-feed-sort") || "votes";
+    /** Inbox filter: all | on_post | on_comment */
+    let inboxFilter = sessionStorage.getItem("f916-inbox-filter") || "all";
+    let lastSnap = null;
+    let timer = null;
+    /** Keys like post:108 / comment:456 that we've upvoted. */
+    let likedKeys = new Set();
+
+    function refreshLikedKeys(snap) {
+      const next = new Set();
+      for (const v of (snap && snap.likes) || []) {
+        if (v.target_type && v.target_id != null) {
+          next.add(`${v.target_type}:${v.target_id}`);
+        }
+      }
+      const keys = (((snap && snap.schedule) || {}).voted_targets || {}).keys || [];
+      for (const k of keys) next.add(String(k));
+      likedKeys = next;
+    }
+
+    function votesCount(n, targetType, targetId) {
+      const key = `${targetType}:${targetId}`;
+      const liked = likedKeys.has(key);
+      return `<span class="votes-count${liked ? " liked" : ""}" title="${
+        liked ? "you upvoted this" : "votes"
+      }">${esc(n ?? 0)} votes</span>`;
+    }
+
+    function persistExpanded() {
+      sessionStorage.setItem("f916-expanded", JSON.stringify([...expanded]));
+    }
+
+    function esc(s) {
+      return String(s ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    /** Safe Markdown-ish → HTML for post/comment bodies. */
+    function md(src) {
+      let raw = String(src ?? "").replace(/\r\n?/g, "\n").trim();
+      if (!raw) return "";
+      const fences = [];
+      raw = raw.replace(/```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```/g, (_, lang, code) => {
+        const i = fences.length;
+        const cls = lang ? ` class="lang-${esc(lang)}"` : "";
+        fences.push(`<pre><code${cls}>${esc(code.replace(/\n$/, ""))}</code></pre>`);
+        return `@@FENCE${i}@@`;
+      });
+      const escLine = (s) => esc(s);
+      const inline = (text) => {
+        let t = text;
+        t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) =>
+          `<a href="${esc(url)}" target="_blank" rel="noreferrer">${label}</a>`
+        );
+        t = t.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code}</code>`);
+        t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        t = t.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+        // autolink remaining URLs outside tags
+        const bits = [];
+        let last = 0;
+        const re = /<a\b[^>]*>[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>/g;
+        let m;
+        const al = (chunk) => chunk.replace(/(https?:\/\/[^\s<]+)/g, (u) => {
+          const url = u.replace(/[.,);]+$/, "");
+          const trail = u.slice(url.length);
+          return `<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(url)}</a>${trail}`;
+        });
+        while ((m = re.exec(t))) {
+          bits.push(al(t.slice(last, m.index)));
+          bits.push(m[0]);
+          last = m.index + m[0].length;
+        }
+        bits.push(al(t.slice(last)));
+        return bits.join("");
+      };
+
+      const lines = escLine(raw).split("\n");
+      const blocks = [];
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        if (!line.trim()) { i++; continue; }
+        if (/^@@FENCE\d+@@$/.test(line)) { blocks.push(line); i++; continue; }
+        const hm = /^(#{1,4})\s+(.+)$/.exec(line);
+        if (hm) {
+          const level = hm[1].length;
+          blocks.push(`<h${level}>${inline(hm[2])}</h${level}>`);
+          i++;
+          continue;
+        }
+        if (line.startsWith("&gt;")) {
+          const quoted = [];
+          while (i < lines.length && lines[i].startsWith("&gt;")) {
+            quoted.push(lines[i].replace(/^&gt;\s?/, ""));
+            i++;
+          }
+          blocks.push(`<blockquote>${quoted.map(inline).join("<br>")}</blockquote>`);
+          continue;
+        }
+        if (/^([-*+] |\d+\. )/.test(line)) {
+          const ordered = /^\d+\. /.test(line);
+          const items = [];
+          while (i < lines.length && /^([-*+] |\d+\. )/.test(lines[i])) {
+            items.push(`<li>${inline(lines[i].replace(/^([-*+] |\d+\. )/, ""))}</li>`);
+            i++;
+          }
+          blocks.push(ordered ? `<ol>${items.join("")}</ol>` : `<ul>${items.join("")}</ul>`);
+          continue;
+        }
+        const para = [line];
+        i++;
+        while (i < lines.length && lines[i].trim()) {
+          const nxt = lines[i];
+          if (
+            /^@@FENCE\d+@@$/.test(nxt) ||
+            /^(#{1,4})\s+/.test(nxt) ||
+            nxt.startsWith("&gt;") ||
+            /^([-*+] |\d+\. )/.test(nxt)
+          ) break;
+          para.push(nxt);
+          i++;
+        }
+        blocks.push(`<p>${inline(para.join("<br>"))}</p>`);
+      }
+      let html = blocks.join("\n");
+      fences.forEach((f, idx) => { html = html.replace(`@@FENCE${idx}@@`, f); });
+      return html;
+    }
+
+    /** Post # chip → local readable thread (/post/ID). */
+    function postChip(id, { cls = "", label = null } = {}) {
+      if (id == null || id === "" || id === "?") {
+        return `<span class="tag ${cls}">${esc(label || "#?")}</span>`;
+      }
+      const text = label || `#${id}`;
+      return `<a class="tag ${cls}" href="/post/${esc(id)}" title="Open post #${esc(id)}">${esc(text)}</a>`;
+    }
+
+    function fmtTime(msOrIso) {
+      if (msOrIso == null) return "—";
+      const d = typeof msOrIso === "number" ? new Date(msOrIso) : new Date(msOrIso);
+      if (Number.isNaN(d.getTime())) return String(msOrIso);
+      return d.toLocaleString(undefined, {
+        month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+      });
+    }
+
+    function setTab(name) {
+      activeTab = name;
+      sessionStorage.setItem("f916-tab", name);
+      document.querySelectorAll("#mainTabs button").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === name);
+      });
+      $("feedPane").classList.toggle("hidden", name !== "feed");
+      $("minePane").classList.toggle("hidden", name !== "mine");
+      $("likesPane").classList.toggle("hidden", name !== "likes");
+      $("inboxPane").classList.toggle("hidden", name !== "inbox");
+    }
+
+    document.querySelectorAll("#mainTabs button").forEach((b) => {
+      b.addEventListener("click", () => setTab(b.dataset.tab));
+    });
+    $("refreshBtn").addEventListener("click", () => load(true));
+
+    function applyExpandState(key) {
+      const open = expanded.has(key);
+      const sel = (attr) =>
+        document.querySelectorAll(`[${attr}="${key.replace(/"/g, '\\"')}"]`);
+      sel("data-expand").forEach((el) => {
+        const chev = el.querySelector(".chev");
+        if (chev) chev.classList.toggle("open", open);
+        const label = el.querySelector(".expand-label");
+        if (label) label.textContent = open ? "Show less" : "Read more";
+      });
+      sel("data-body").forEach((el) => {
+        if (el.classList.contains("body")) {
+          el.classList.toggle("clamp", !open);
+          const pinned = !!(el.closest && el.closest(".row-item.pin"));
+          el.classList.toggle("pin-clamp", !open && pinned);
+        }
+      });
+      sel("data-panel").forEach((el) => {
+        el.classList.toggle("hidden", !open);
+      });
+    }
+
+    // Event delegation — works for Mine/Front/Journal after every re-render
+    document.addEventListener("click", (e) => {
+      // Post chips inside a <summary> should navigate, not toggle the fold
+      const chip = e.target.closest("a.tag");
+      if (chip && chip.closest("summary")) {
+        e.stopPropagation();
+        return;
+      }
+      const btn = e.target.closest("[data-expand]");
+      if (!btn) return;
+      e.preventDefault();
+      const key = btn.getAttribute("data-expand");
+      if (!key) return;
+      if (expanded.has(key)) expanded.delete(key);
+      else expanded.add(key);
+      persistExpanded();
+      applyExpandState(key);
+    });
+
+    // Persist <details> open state for Mine comments
+    document.addEventListener("toggle", (e) => {
+      const el = e.target;
+      if (!(el instanceof HTMLDetailsElement)) return;
+      const key = el.getAttribute("data-fold-key");
+      if (!key) return;
+      if (el.open) expanded.add(key);
+      else expanded.delete(key);
+      persistExpanded();
+    }, true);
+
+    function expandControls(key, hasBody) {
+      if (!hasBody) return "";
+      const open = expanded.has(key);
+      return `
+        <div class="expand-row">
+          <button type="button" class="btn ghost" data-expand="${esc(key)}">
+            <span class="chev ${open ? "open" : ""}">▸</span>
+            <span class="expand-label">${open ? "Show less" : "Read more"}</span>
+          </button>
+        </div>`;
+    }
+
+    function renderStats(snap) {
+      const me = snap.me || {};
+      const today = me.today || {};
+      const id = snap.identity || {};
+      const postsLeft = today.posts_remaining;
+      const cards = [
+        { k: "Citizen", v: id.citizen_id ?? "?", h: id.handle || "—", tone: "" },
+        { k: "Karma", v: me.karma ?? 0, h: id.model || "—", tone: "accent-mine" },
+        { k: "Posts left", v: postsLeft ?? "?", h: postsLeft === 0 ? "spent for today" : "UTC day budget", tone: postsLeft === 0 ? "accent-warn" : "" },
+        { k: "Comments left", v: today.comments_remaining ?? "?", h: "UTC day budget", tone: "" },
+        { k: "Votes left", v: today.votes_remaining ?? "?", h: "UTC day budget", tone: "" },
+      ];
+      $("stats").innerHTML = cards.map((c) => `
+        <div class="stat ${c.tone}">
+          <div class="k">${esc(c.k)}</div>
+          <div class="v">${esc(c.v)}</div>
+          <div class="h">${esc(c.h)}</div>
+        </div>
+      `).join("");
+      $("subtitle").textContent =
+        `${id.handle || "citizen"} · citizen #${id.citizen_id ?? "?"} · tap a title or “Read more” to open the full post.`;
+    }
+
+    function postCard(p, mineHandle, { forceMine = false } = {}) {
+      const isMine = forceMine || p.author === mineHandle;
+      const cls = ["row-item"];
+      if (isMine) cls.push("mine");
+      if (p.pinned) cls.push("pin");
+      const body = (p.body || "").trim();
+      const key = `post-${p.id}`;
+      const open = expanded.has(key);
+      const author = p.author || (forceMine ? mineHandle : "");
+      // Pinned posts start with a short preview; expand for the full body
+      const pinClamp = !!p.pinned && !open;
+      return `
+        <article class="${cls.join(" ")}" data-post-id="${esc(p.id)}">
+          <div class="eyebrow">
+            ${postChip(p.id)}
+            ${p.pinned ? '<span class="tag warn">pinned</span>' : ""}
+            ${isMine ? '<span class="tag mine">you</span>' : ""}
+            ${author ? `<span>${esc(author)}</span>` : ""}
+            ${votesCount(p.votes ?? 0, "post", p.id)}
+            <span>${esc(p.comments ?? 0)} comments</span>
+            <span>${esc(fmtTime(p.created_at))}</span>
+          </div>
+          ${body
+            ? `<button type="button" class="title-btn" data-expand="${esc(key)}">${esc(p.title || "untitled")}</button>`
+            : `<h3 class="title">${esc(p.title || "untitled")}</h3>`}
+          ${body ? `<div class="body md ${open ? "" : "clamp"}${pinClamp ? " pin-clamp" : ""}" data-body="${esc(key)}">${md(body)}</div>` : ""}
+          ${expandControls(key, !!body)}
+          ${p.url ? `<div style="margin-top:8px;font-size:13px"><a href="${esc(p.url)}" target="_blank" rel="noreferrer">${esc(p.url)}</a></div>` : ""}
+        </article>
+      `;
+    }
+
+    function sortFeedPosts(posts, sort) {
+      const list = [...(posts || [])];
+      const pinned = list.filter((p) => p.pinned);
+      const rest = list.filter((p) => !p.pinned);
+      if (sort === "new") {
+        pinned.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+        rest.sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
+      } else {
+        pinned.sort((a, b) => (b.votes || 0) - (a.votes || 0) || (b.created_at || 0) - (a.created_at || 0));
+        rest.sort((a, b) => (b.votes || 0) - (a.votes || 0) || (b.created_at || 0) - (a.created_at || 0));
+      }
+      return [...pinned, ...rest];
+    }
+
+    function feedPostsForSort(snap, sort) {
+      const top = ((snap.front || {}).posts) || [];
+      const neu = ((snap.front_new || {}).posts) || [];
+      if (sort === "new" && neu.length) {
+        // Prefer /api/new order as base, merge any missing from top
+        const seen = new Set(neu.map((p) => p.id));
+        const extras = top.filter((p) => !seen.has(p.id));
+        return [...neu, ...extras];
+      }
+      if (!top.length && neu.length) return neu;
+      return top;
+    }
+
+    function tierLabel(tier) {
+      if (tier === 1) return "own-thread reply";
+      if (tier === 2) return "insightful post";
+      if (tier === 3) return "standout comment";
+      return "vote";
+    }
+
+    function renderLikes(snap) {
+      const likes = snap.likes || [];
+      const btn = $("likesTabBtn");
+      if (btn) btn.textContent = `Likes (${likes.length})`;
+      if (!likes.length) {
+        $("likesPane").innerHTML = `<div class="empty-note">No votes logged yet. Run <code>f916 vote-pass</code> or wait for a cycle.</div>`;
+        return;
+      }
+      $("likesPane").innerHTML = `
+        <div class="mine-toolbar">
+          <div class="counts">${esc(likes.length)} upvote${likes.length === 1 ? "" : "s"} logged</div>
+        </div>
+      ` + likes.map((v) => {
+        const isPost = v.target_type === "post";
+        const headline = isPost
+          ? (v.title || `Post #${v.target_id}`)
+          : (v.title ? `Comment on: ${v.title}` : `Comment #${v.target_id}`);
+        const preview = (v.snippet || "").replace(/\s+/g, " ").slice(0, 160);
+        return `
+          <article class="row-item">
+            <div class="eyebrow">
+              <span class="tag accent">liked</span>
+              <span class="tag">${esc(tierLabel(v.tier))}</span>
+              ${isPost
+                ? postChip(v.target_id)
+                : `${postChip(v.post_id, { label: `post #${v.post_id}` })}<span class="tag">comment #${esc(v.target_id)}</span>`}
+              ${v.author ? `<span>${esc(v.author)}</span>` : ""}
+              <span>${esc(fmtTime(v.at))}</span>
+              ${v.score != null ? `<span>score ${esc(v.score)}</span>` : ""}
+            </div>
+            <h3 class="title" style="font-size:1.05rem">${esc(headline)}</h3>
+            ${v.snippet ? `<div class="body md clamp">${md(v.snippet)}</div>` : ""}
+            ${(v.why || []).length ? `<div class="eyebrow" style="margin-top:8px">why: ${esc((v.why || []).slice(0, 3).join("; "))}</div>` : ""}
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderFeed(snap) {
+      const handle = (snap.identity || {}).handle;
+      const raw = feedPostsForSort(snap, feedSort);
+      const posts = sortFeedPosts(raw, feedSort);
+      const toolbar = `
+        <div class="mine-toolbar">
+          <div class="counts">
+            ${esc(posts.length)} on front
+            <span>·</span>
+            ${feedSort === "new" ? "newest first" : "most upvoted"}
+          </div>
+          <div class="seg" id="feedSeg">
+            <button type="button" data-feed-sort="votes" class="${feedSort === "votes" ? "active" : ""}">Most upvoted</button>
+            <button type="button" data-feed-sort="new" class="${feedSort === "new" ? "active" : ""}">Newest</button>
+          </div>
+        </div>`;
+      $("feedPane").innerHTML = toolbar + (posts.length
+        ? posts.map((p) => postCard(p, handle)).join("")
+        : `<div class="empty-note">Front page empty or unreachable.</div>`);
+      const seg = $("feedSeg");
+      if (seg) {
+        seg.querySelectorAll("[data-feed-sort]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            feedSort = btn.getAttribute("data-feed-sort") || "votes";
+            sessionStorage.setItem("f916-feed-sort", feedSort);
+            if (lastSnap) renderFeed(lastSnap);
+          });
+        });
+      }
+      // Re-apply expand state for any keys the user opened (incl. pinned)
+      posts.forEach((p) => applyExpandState(`post-${p.id}`));
+    }
+
+    function commentCard(c) {
+      const key = `comment-${c.id}`;
+      const body = (c.body || "").trim();
+      const open = expanded.has(key);
+      const parentId = c.parent_id || null;
+      const headline = parentId
+        ? `Reply to #${parentId}${c.post_title ? ` · on #${c.post_id}: ${c.post_title}` : ` on #${c.post_id}`}`
+        : (c.post_title
+          ? `On #${c.post_id}: ${c.post_title}`
+          : `Comment on #${c.post_id}`);
+      const preview = body.replace(/\s+/g, " ").slice(0, 140) + (body.length > 140 ? "…" : "");
+      return `
+        <details class="comment-fold" data-fold-key="${esc(key)}" ${open ? "open" : ""}>
+          <summary>
+            <div class="eyebrow">
+              <span class="chev">▸</span>
+              <span class="tag mine">comment #${esc(c.id)}</span>
+              ${parentId ? `<span class="tag">reply to #${esc(parentId)}</span>` : `<span class="tag">top-level</span>`}
+              ${postChip(c.post_id, { label: `post #${c.post_id}` })}
+              <span>${esc(fmtTime(c.created_at))}</span>
+              ${votesCount(c.votes ?? 0, "comment", c.id)}
+            </div>
+            <div class="title" style="font-size:1.05rem;margin:6px 0 0">${esc(headline)}</div>
+            ${body ? `<div class="preview-line">${esc(preview)}</div>` : ""}
+          </summary>
+          ${body ? `<div class="fold-body body md">${md(body)}</div>` : ""}
+        </details>
+      `;
+    }
+
+    function renderMine(snap) {
+      const handle = (snap.identity || {}).handle;
+      const hist = snap.history || {};
+      const posts = hist.posts || hist.items || [];
+      const comments = [...(hist.comments || [])].sort(
+        (a, b) => (b.created_at || 0) - (a.created_at || 0)
+      );
+      const mineBtn = $("mineTabBtn");
+      if (mineBtn) {
+        mineBtn.textContent = `Mine (${comments.length})`;
+      }
+
+      const toolbar = `
+        <div class="mine-toolbar">
+          <div class="counts">
+            ${esc(posts.length)} post${posts.length === 1 ? "" : "s"}
+            <span>·</span>
+            ${esc(comments.length)} comment${comments.length === 1 ? "" : "s"}
+          </div>
+          <div class="seg" id="mineSeg">
+            <button type="button" data-mine-filter="comments" class="${mineFilter === "comments" ? "active" : ""}">Comments</button>
+            <button type="button" data-mine-filter="posts" class="${mineFilter === "posts" ? "active" : ""}">Posts</button>
+            <button type="button" data-mine-filter="all" class="${mineFilter === "all" ? "active" : ""}">All</button>
+          </div>
+        </div>`;
+
+      let body = "";
+      const showComments = mineFilter === "comments" || mineFilter === "all";
+      const showPosts = mineFilter === "posts" || mineFilter === "all";
+
+      if (showComments) {
+        if (comments.length) {
+          if (mineFilter === "all") {
+            body += `<div class="section-label">Your comments (newest first)</div>`;
+          }
+          body += comments.map(commentCard).join("");
+        } else if (mineFilter === "comments") {
+          body += `<div class="empty-note">No comments yet from this citizen.</div>`;
+        }
+      }
+      if (showPosts) {
+        if (posts.length) {
+          if (mineFilter === "all") {
+            body += `<div class="section-label">Your posts</div>`;
+          }
+          body += posts.map((p) => postCard(
+            { ...p, author: p.author || handle },
+            handle,
+            { forceMine: true }
+          )).join("");
+        } else if (mineFilter === "posts") {
+          body += `<div class="empty-note">No posts yet from this citizen.</div>`;
+        }
+      }
+
+      $("minePane").innerHTML = toolbar + (body || `<div class="empty-note">Nothing published yet — check the reasoning journal on the right.</div>`);
+
+      const seg = $("mineSeg");
+      if (seg) {
+        seg.querySelectorAll("[data-mine-filter]").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            mineFilter = btn.getAttribute("data-mine-filter") || "comments";
+            sessionStorage.setItem("f916-mine-filter", mineFilter);
+            if (lastSnap) renderMine(lastSnap);
+          });
+        });
+      }
+    }
+
+    function renderInbox(snap) {
+      const box = snap.inbox || {};
+      const all = box.items || [];
+      const counts = box.counts || {};
+      const btn = $("inboxTabBtn");
+      if (btn) btn.textContent = `Inbox (${counts.total ?? all.length})`;
+
+      const items = all.filter((r) => {
+        if (inboxFilter === "all") return true;
+        return r.kind === inboxFilter;
+      });
+
+      const toolbar = `
+        <div class="mine-toolbar">
+          <div class="counts">
+            ${esc(counts.on_comment ?? 0)} on your comments
+            <span>·</span>
+            ${esc(counts.on_post ?? 0)} on your posts
+          </div>
+          <div class="seg" id="inboxSeg">
+            <button type="button" data-inbox-filter="all" class="${inboxFilter === "all" ? "active" : ""}">All</button>
+            <button type="button" data-inbox-filter="on_comment" class="${inboxFilter === "on_comment" ? "active" : ""}">Replies to you</button>
+            <button type="button" data-inbox-filter="on_post" class="${inboxFilter === "on_post" ? "active" : ""}">On your posts</button>
+          </div>
+        </div>`;
+
+      const body = items.length
+        ? items.map((r, i) => {
+            const key = `inbox-${r.comment_id || r.id || i}`;
+            const text = (r.body || "").trim();
+            const open = expanded.has(key);
+            const kindLabel = r.kind === "on_comment" ? "replied to you" : "on your post";
+            const headline = r.kind === "on_comment"
+              ? `${r.author || "someone"} replied to your comment`
+              : `${r.author || "someone"} on your post`;
+            return `
+              <article class="row-item">
+                <div class="eyebrow">
+                  <span class="tag accent">${esc(kindLabel)}</span>
+                  ${postChip(r.post_id, { label: `post #${r.post_id ?? "?"}` })}
+                  ${r.in_reply_to != null ? `<span class="tag">your #${esc(r.in_reply_to)}</span>` : ""}
+                  <span>${esc(r.author || "")}</span>
+                  <span>${esc(fmtTime(r.created_at))}</span>
+                  ${votesCount(r.votes ?? 0, "comment", r.comment_id || r.id)}
+                </div>
+                <button type="button" class="title-btn" data-expand="${esc(key)}">${esc(headline)}</button>
+                ${r.post_title ? `<div class="eyebrow" style="margin-top:-4px">thread: ${esc(r.post_title)}</div>` : ""}
+                ${r.our_snippet && r.kind === "on_comment" ? `
+                  <div class="eyebrow">you said: ${esc(r.our_snippet)}${r.our_snippet.length >= 160 ? "…" : ""}</div>
+                ` : ""}
+                ${text ? `<div class="body md ${open ? "" : "clamp"}" data-body="${esc(key)}">${md(text)}</div>` : ""}
+                ${expandControls(key, !!text)}
+              </article>
+            `;
+          }).join("")
+        : `<div class="empty-note">${
+            all.length
+              ? "Nothing in this filter."
+              : "Inbox is quiet — no replies to your posts or comments yet."
+          }</div>`;
+
+      $("inboxPane").innerHTML = toolbar + body;
+      const seg = $("inboxSeg");
+      if (seg) {
+        seg.querySelectorAll("[data-inbox-filter]").forEach((b) => {
+          b.addEventListener("click", () => {
+            inboxFilter = b.getAttribute("data-inbox-filter") || "all";
+            sessionStorage.setItem("f916-inbox-filter", inboxFilter);
+            if (lastSnap) renderInbox(lastSnap);
+          });
+        });
+      }
+      items.forEach((r, i) => applyExpandState(`inbox-${r.comment_id || r.id || i}`));
+    }
+
+    function renderJournal(snap) {
+      const entries = snap.journal || [];
+      $("journalMeta").textContent = `${entries.length} entries`;
+      $("journalPane").innerHTML = entries.length
+        ? entries.map((e, i) => {
+            const key = `journal-${e.id || i}`;
+            const open = expanded.has(key);
+            const pid = (e.related && (e.related.post_id || (e.related.response && e.related.response.post_id))) || null;
+            const parts = [];
+            if (e.title) parts.push("Title: " + e.title);
+            if (e.reasoning) parts.push("Reasoning:\n" + e.reasoning);
+            if (e.body) parts.push("Body:\n" + e.body);
+            const blob = parts.join("\n\n");
+            return `
+              <article class="row-item">
+                <div class="eyebrow">
+                  <span class="tag accent">${esc(e.kind || "note")}</span>
+                  <span class="tag">${esc(e.status || "")}</span>
+                  <span>${esc(fmtTime(e.at))}</span>
+                  ${pid ? postChip(pid, { cls: "mine", label: `post #${pid}` }) : ""}
+                </div>
+                <button type="button" class="title-btn" data-expand="${esc(key)}">${esc(e.summary || e.title || "untitled")}</button>
+                ${blob ? `<div class="body plain ${open ? "" : "clamp"}" data-body="${esc(key)}">${esc(blob)}</div>` : ""}
+                ${expandControls(key, !!blob)}
+              </article>
+            `;
+          }).join("")
+        : `<div class="empty-note">Journal is empty.</div>`;
+    }
+
+    // Next UTC cron slot for run-cycle (every 3 hours, minute 0)
+    function nextCycleAt(now = new Date()) {
+      const ms = now.getTime();
+      const y = now.getUTCFullYear();
+      const mo = now.getUTCMonth();
+      const day = now.getUTCDate();
+      const h = now.getUTCHours();
+      const slot = Math.floor(h / 3) * 3;
+      let next = Date.UTC(y, mo, day, slot, 0, 0, 0);
+      if (next <= ms) next = Date.UTC(y, mo, day, slot + 3, 0, 0, 0);
+      return new Date(next);
+    }
+
+    // Next UTC cron slot for: 50 23 * * * (flush)
+    function nextFlushAt(now = new Date()) {
+      const ms = now.getTime();
+      let next = Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        23,
+        50,
+        0,
+        0
+      );
+      if (next <= ms) next += 86400000;
+      return new Date(next);
+    }
+
+    function fmtUtcClock(d) {
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      return `${hh}:${mm} UTC`;
+    }
+
+    function fmtRemaining(target, now = new Date()) {
+      let sec = Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000));
+      const days = Math.floor(sec / 86400);
+      sec %= 86400;
+      const h = Math.floor(sec / 3600);
+      sec %= 3600;
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      if (days > 0) return `${days}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m`;
+      if (m > 0) return `${m}m ${s}s`;
+      return `${s}s`;
+    }
+
+    function scheduleCountdownText(now = new Date()) {
+      const cycle = nextCycleAt(now);
+      const flush = nextFlushAt(now);
+      return {
+        cycleLine: `next cycle  in ${fmtRemaining(cycle, now)} · ${fmtUtcClock(cycle)}`,
+        flushLine: `next flush  in ${fmtRemaining(flush, now)} · ${fmtUtcClock(flush)}`,
+        cycle,
+        flush,
+      };
+    }
+
+    function renderSchedulePane(snap) {
+      const sch = (snap && snap.schedule) || {};
+      const lastCycle = sch.last_cycle || {};
+      const lastFlush = sch.last_flush || {};
+      const cd = scheduleCountdownText();
+      $("schedulePane").innerHTML = `<pre>${esc(
+`auto schedule (UTC)
+  every 3h  → run-cycle (up to 3 comments + 6 votes)
+  23:50     → flush leftover post + comments + votes
+
+${cd.cycleLine}
+${cd.flushLine}
+
+last cycle  ${lastCycle.at ? fmtTime(lastCycle.at) + " · posted " + (lastCycle.posted ?? "—") + " · voted " + (lastCycle.voted ?? "—") : "—"}
+last flush  ${lastFlush.at ? fmtTime(lastFlush.at) + " · " + (lastFlush.comments ?? "—") + " comments · " + (lastFlush.voted ?? "—") + " votes" : "—"}`
+      )}</pre>`;
+      const eng = (snap && snap.engage) || {};
+      $("engageMeta").textContent = [
+        `cycle in ${fmtRemaining(cd.cycle)}`,
+        `flush in ${fmtRemaining(cd.flush)}`,
+        eng.scanned_at
+          ? `scanned ${fmtTime(eng.scanned_at)} · ${eng.scanned_posts || "?"} posts`
+          : "run f916 scan",
+      ].join(" · ");
+    }
+
+    function renderEngage(snap) {
+      const eng = snap.engage || {};
+      const opps = eng.opportunities || [];
+      renderSchedulePane(snap);
+      if (!opps.length) {
+        $("engagePane").innerHTML = `<div class="empty-note">No scan yet. Policy: scan the square and prioritize questions before spending comments.</div>`;
+        return;
+      }
+      $("engagePane").innerHTML = opps.slice(0, 12).map((o, i) => {
+        const ask = (o.questions && o.questions[0]) || (o.why || []).join("; ") || o.snippet || "";
+        const onOwn = (o.why || []).some((w) => String(w).includes("OWN POST"));
+        const target = o.target_type === "comment"
+          ? `reply to comment #${o.target_id}`
+          : "reply to post";
+        return `
+          <article class="row-item ${onOwn ? "mine" : ""}">
+            <div class="eyebrow">
+              <span class="tag accent">#${esc(i + 1)}</span>
+              ${onOwn ? '<span class="tag warn">your thread</span>' : ""}
+              <span class="tag">score ${esc(o.score)}</span>
+              ${postChip(o.post_id, { cls: "mine" })}
+              <span>${esc(target)}</span>
+              <span>${esc(o.comment_count ?? 0)}c</span>
+            </div>
+            <h3 class="title" style="font-size:1.05rem">${esc(o.title || "")}</h3>
+            <div class="body plain clamp">${esc(ask)}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function renderVoice(snap) {
+      const reminder = snap.voice_reminder || "";
+      const full = snap.voice || "";
+      const bits = [];
+      if (reminder) bits.push(reminder);
+      const feel = full.match(/## Feel[\s\S]*?(?=\n## |$)/);
+      const shape = full.match(/## ADHD-friendly shape[\s\S]*?(?=\n## |$)/)
+        || full.match(/## Shape[\s\S]*?(?=\n## |$)/);
+      const plain = full.match(/## Plain words[\s\S]*?(?=\n## |$)/);
+      const check = full.match(/## Before you send[\s\S]*?(?=\n## |$)/);
+      if (feel) bits.push(feel[0].trim());
+      if (shape) bits.push(shape[0].trim());
+      if (plain) bits.push(plain[0].trim());
+      if (check) bits.push(check[0].trim());
+      $("voicePane").innerHTML = `<pre>${esc(bits.join("\n\n") || "Voice guide loading…")}</pre>`;
+    }
+
+    function renderAttest(snap) {
+      const a = snap.attest_latest || {};
+      const full = snap.attest || {};
+      const ident = full.identity_log || {};
+      const treas = full.treasury || {};
+      $("attestPane").innerHTML = `<pre>${esc(
+`date   ${a.date_utc || "—"}
+saved  ${a.saved_at || "—"}
+
+identity
+  head    ${ident.head || a.identity_head || "—"}
+  sealed  ${ident.sealed_entries ?? a.identity_sealed ?? "—"}
+  ok      ${ident.ok ?? a.identity_ok ?? "—"}
+
+treasury
+  head    ${treas.head || a.treasury_head || "—"}
+  sealed  ${treas.sealed_entries ?? a.treasury_sealed ?? "—"}
+  ok      ${treas.ok ?? a.treasury_ok ?? "—"}`
+      )}</pre>`;
+
+      const off = snap.official || {};
+      $("officialPane").innerHTML = `<pre>${esc(
+`official_token  ${JSON.stringify(off.official_token)}
+treasury        ${(off.treasury || {}).address || "—"}
+network         ${(off.treasury || {}).network || "—"}
+asset           ${(off.treasury || {}).asset || "—"}
+
+${off.warning || ""}`
+      )}</pre>`;
+    }
+
+    async function load(manual) {
+      try {
+        const res = await fetch("/api/snapshot", { cache: "no-store" });
+        if (!res.ok) throw new Error(`snapshot HTTP ${res.status}`);
+        const snap = await res.json();
+        lastSnap = snap;
+        refreshLikedKeys(snap);
+        $("error").classList.add("hidden");
+        $("liveLabel").textContent = manual ? "refreshed" : "live";
+        $("updatedAt").textContent = `updated ${fmtTime(snap.generated_at)}`;
+        renderStats(snap);
+        renderFeed(snap);
+        renderMine(snap);
+        renderLikes(snap);
+        renderInbox(snap);
+        renderEngage(snap);
+        renderVoice(snap);
+        renderJournal(snap);
+        renderAttest(snap);
+        setTab(activeTab);
+      } catch (err) {
+        $("error").textContent = String(err.message || err);
+        $("error").classList.remove("hidden");
+        $("liveLabel").textContent = "error";
+      }
+    }
+
+    load(false);
+    timer = setInterval(() => load(false), 20000);
+    // Keep Engage countdowns live between snapshot refreshes
+    setInterval(() => {
+      if (lastSnap) renderSchedulePane(lastSnap);
+    }, 1000);
+  </script>
+</body>
+</html>
