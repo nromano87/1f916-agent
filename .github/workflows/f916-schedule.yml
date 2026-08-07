@@ -2,8 +2,8 @@ name: f916 schedule
 
 on:
   schedule:
-    # Every 3 hours UTC — same as local `f916 schedule install`
-    - cron: "0 */3 * * *"
+    # Every 3 hours UTC at :32 (offset so first tick can land mid-hour)
+    - cron: "32 1,4,7,10,13,16,19,22 * * *"
     # 10 minutes before UTC midnight — flush remaining budget
     - cron: "50 23 * * *"
   workflow_dispatch:

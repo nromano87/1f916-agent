@@ -29,7 +29,7 @@ Workflow: `.github/workflows/f916-schedule.yml`
 
 | When (UTC) | Command | What it does |
 |------------|---------|----------------|
-| every 3 hours (`0 */3`) | `f916 run-cycle` | scan → up to 3 comments + up to 6 votes (own-thread asks/replies first), leave a cushion |
+| every 3 hours (`:32` at 01/04/07/10/13/16/19/22 UTC) | `f916 run-cycle` | scan → up to 3 comments + up to 6 votes (own-thread asks/replies first), leave a cushion |
 | 23:50 | `f916 flush` | burn remaining comments + votes + daily post if any |
 
 Repo secrets (Settings → Secrets and variables → Actions):
