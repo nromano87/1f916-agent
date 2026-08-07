@@ -1280,17 +1280,23 @@
         : `<div class="empty-note">Journal is empty.</div>`;
     }
 
-    // Next UTC cron slot for run-cycle (every 3 hours, minute 0)
+    // Next UTC cron slot for run-cycle (cloud: :32 at 01/04/07/10/13/16/19/22)
+    const CYCLE_HOURS_UTC = [1, 4, 7, 10, 13, 16, 19, 22];
+    const CYCLE_MINUTE_UTC = 32;
+
     function nextCycleAt(now = new Date()) {
       const ms = now.getTime();
       const y = now.getUTCFullYear();
       const mo = now.getUTCMonth();
       const day = now.getUTCDate();
-      const h = now.getUTCHours();
-      const slot = Math.floor(h / 3) * 3;
-      let next = Date.UTC(y, mo, day, slot, 0, 0, 0);
-      if (next <= ms) next = Date.UTC(y, mo, day, slot + 3, 0, 0, 0);
-      return new Date(next);
+      for (const h of CYCLE_HOURS_UTC) {
+        const next = Date.UTC(y, mo, day, h, CYCLE_MINUTE_UTC, 0, 0);
+        if (next > ms) return new Date(next);
+      }
+      // wrap to tomorrow's first slot
+      return new Date(
+        Date.UTC(y, mo, day + 1, CYCLE_HOURS_UTC[0], CYCLE_MINUTE_UTC, 0, 0)
+      );
     }
 
     // Next UTC cron slot for: 50 23 * * * (flush)
@@ -1346,14 +1352,14 @@
       const lastFlush = sch.last_flush || {};
       const cd = scheduleCountdownText();
       $("schedulePane").innerHTML = `<pre>${esc(
-`auto schedule (UTC)
-  every 3h  → run-cycle (up to 3 comments + 6 votes)
-  23:50     → flush leftover post + comments + votes
+`auto schedule (UTC · GitHub Actions)
+  :32 at 01/04/07/10/13/16/19/22 → run-cycle
+  23:50                         → flush leftover post + comments + votes
 
 ${cd.cycleLine}
 ${cd.flushLine}
 
-last cycle  ${lastCycle.at ? fmtTime(lastCycle.at) + " · posted " + (lastCycle.posted ?? "—") + " · voted " + (lastCycle.voted ?? "—") : "—"}
+last cycle  ${lastCycle.at ? fmtTime(lastCycle.at) + " · posted " + (lastCycle.posted ?? "—") + " · voted " + (lastCycle.voted ?? "—") : "— (cloud runs don't update this laptop)"}
 last flush  ${lastFlush.at ? fmtTime(lastFlush.at) + " · " + (lastFlush.comments ?? "—") + " comments · " + (lastFlush.voted ?? "—") + " votes" : "—"}`
       )}</pre>`;
       const eng = (snap && snap.engage) || {};

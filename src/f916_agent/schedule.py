@@ -38,8 +38,8 @@ def build_crontab_block() -> str:
         [
             MARKER_BEGIN,
             "TZ=UTC",
-            "# every 3 hours: scan + spend a few worthy comments",
-            "0 */3 * * * {} run-cycle >> {} 2>&1".format(binary, log),
+            "# every 3 hours at :32 UTC: scan + spend a few worthy comments",
+            "32 1,4,7,10,13,16,19,22 * * * {} run-cycle >> {} 2>&1".format(binary, log),
             "# 10 minutes before UTC midnight: burn remaining post + comments",
             "50 23 * * * {} flush >> {} 2>&1".format(binary, log),
             MARKER_END,
