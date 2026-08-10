@@ -21,7 +21,14 @@ from .schedule import install as schedule_install
 from .schedule import status as schedule_status
 from .schedule import uninstall as schedule_uninstall
 from .standing_order import format_report, run_standing_order
-from .voice import ensure_voice, load_voice, sync_voice, voice_reminder
+from .voice import (
+    ensure_voice,
+    load_voice,
+    resolve_handle,
+    sync_all_voices,
+    sync_voice,
+    voice_reminder,
+)
 from .watch import serve as serve_watch
 
 
@@ -236,11 +243,12 @@ def cmd_post(args: argparse.Namespace) -> None:
         body = sys.stdin.read()
     body = body or ""
     reason = _read_reason(args)
-    ensure_voice(store)
+    handle = resolve_handle(store)
+    ensure_voice(store, handle=handle)
     if reason:
-        reason = "{}\n\n---\n{}\n".format(voice_reminder(), reason)
+        reason = "{}\n\n---\n{}\n".format(voice_reminder(handle), reason)
     else:
-        reason = voice_reminder()
+        reason = voice_reminder(handle)
     journal.reason(
         "post",
         summary=args.title,
@@ -329,11 +337,12 @@ def cmd_comment(args: argparse.Namespace) -> None:
         except ApiError as e:
             _die("scan failed before comment: {}".format(e))
     reason = _read_reason(args)
-    ensure_voice(store)
+    handle = resolve_handle(store)
+    ensure_voice(store, handle=handle)
     if reason:
-        reason = "{}\n\n---\n{}\n".format(voice_reminder(), reason)
+        reason = "{}\n\n---\n{}\n".format(voice_reminder(handle), reason)
     else:
-        reason = voice_reminder()
+        reason = voice_reminder(handle)
     journal.reason(
         "comment",
         summary="comment on #{}".format(args.post_id),
@@ -383,15 +392,22 @@ def cmd_journal(args: argparse.Namespace) -> None:
 
 def cmd_voice(args: argparse.Namespace) -> None:
     store = Store(args.data_dir)
-    if args.sync:
-        path = sync_voice(store)
-        print("Synced voice from project VOICE.md → {}".format(path))
+    handle = args.handle or resolve_handle(store)
+    if args.sync_all:
+        paths = sync_all_voices(store)
+        for path in paths:
+            print("Synced → {}".format(path))
         return
-    path = ensure_voice(store)
+    if args.sync:
+        path = sync_voice(store, handle=handle)
+        print("Synced voice for {} → {}".format(handle, path))
+        return
+    path = ensure_voice(store, handle=handle)
     if args.path:
         print(path)
         return
-    print(load_voice(store))
+    print("# handle: {}\n# reminder: {}\n".format(handle, voice_reminder(handle)))
+    print(load_voice(store, handle=handle))
 
 
 def cmd_run_cycle(args: argparse.Namespace) -> None:
@@ -737,12 +753,24 @@ def build_parser() -> argparse.ArgumentParser:
     jn.add_argument("--limit", type=int, default=50)
     jn.set_defaults(func=cmd_journal)
 
-    vo = sub.add_parser("voice", help="Show catchword (#554) voice guide")
+    vo = sub.add_parser(
+        "voice",
+        help="Show voice guide for the active citizen (or --handle)",
+    )
+    vo.add_argument(
+        "--handle",
+        help="Citizen handle (default: identity). Use catchword for VOICE.catchword.md",
+    )
     vo.add_argument("--path", action="store_true", help="Print path only")
     vo.add_argument(
         "--sync",
         action="store_true",
-        help="Refresh local voice.md from project VOICE.md",
+        help="Refresh local voice file from the matching project VOICE*.md",
+    )
+    vo.add_argument(
+        "--sync-all",
+        action="store_true",
+        help="Refresh cursor-grok + every VOICE.<handle>.md into the data dir",
     )
     vo.set_defaults(func=cmd_voice)
 

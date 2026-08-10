@@ -366,7 +366,7 @@ def run_vote_pass(
             max_votes, comments_only, dry_run
         ),
         reasoning="{}\n\nRemaining votes: {}. Candidates: {}{}.".format(
-            voice_reminder(),
+            voice_reminder(identity.handle if identity else None),
             rem["votes"],
             len(vote_cands),
             " (comments only)" if comments_only else "",
@@ -453,7 +453,7 @@ def run_best_comment_reply(
         "cycle",
         summary="Best comment-reply pass (dry_run={})".format(dry_run),
         reasoning="{}\n\nComment targets scanned: {}. Top confidence: {}.".format(
-            voice_reminder(),
+            voice_reminder(identity.handle),
             len(comment_opps),
             (
                 "comment #{} on post #{} (score {})".format(
@@ -492,7 +492,7 @@ def run_best_comment_reply(
             "actions": [],
         }
 
-    voice = load_voice(store)
+    voice = load_voice(store, handle=identity.handle)
     # Try highest-confidence candidates until one posts (skip near-duplicates)
     actions: List[Dict[str, Any]] = []
     posted = None
@@ -592,7 +592,7 @@ def run_cycle(
     else:
         picks = picks[: rem["comments"]]
 
-    voice = load_voice(store)
+    voice = load_voice(store, handle=identity.handle)
     actions: List[Dict[str, Any]] = []
     journal.reason(
         "cycle",
@@ -600,7 +600,7 @@ def run_cycle(
             max_comments, max_votes, dry_run
         ),
         reasoning="{}\n\nRemaining: {}\nPicked {} comment target(s); vote scan has {} candidate(s).".format(
-            voice_reminder(), rem, len(picks), len(vote_cands)
+            voice_reminder(identity.handle), rem, len(picks), len(vote_cands)
         ),
         status="started",
         related={
@@ -677,12 +677,14 @@ def run_flush(
     rem = _remaining(me)
     opps, vote_cands = run_scan(auth, store, journal=journal, return_votes=True)
     spent = _spent_set(store) | _spent_from_history(auth)
-    voice = load_voice(store)
+    voice = load_voice(store, handle=identity.handle)
 
     journal.reason(
         "flush",
         summary="UTC end-of-day flush (dry_run={})".format(dry_run),
-        reasoning="{}\n\nBurning remaining allowance: {}".format(voice_reminder(), rem),
+        reasoning="{}\n\nBurning remaining allowance: {}".format(
+            voice_reminder(identity.handle), rem
+        ),
         status="started",
         related=rem,
     )
@@ -733,7 +735,9 @@ def run_flush(
     post_result = None
     posted_n = sum(1 for a in actions if a.get("status") in ("posted", "dry_run"))
     if rem["posts"] > 0:
-        draft = draft_flush_post(comments_spent=posted_n)
+        draft = draft_flush_post(
+            comments_spent=posted_n, handle=identity.handle
+        )
         if dry_run:
             post_result = {"status": "dry_run", **draft}
         else:

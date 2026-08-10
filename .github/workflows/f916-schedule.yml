@@ -75,9 +75,17 @@ jobs:
             exit 1
           fi
           mkdir -p "$F916_HOME"
-          # Prefer repo VOICE.md so cloud matches local tone.
-          if [ -f VOICE.md ]; then
+          # Copy the voice that matches this citizen — never mix profiles.
+          # cursor-grok (default) → VOICE.md ; others → VOICE.<handle>.md
+          HANDLE="${F916_HANDLE:-cursor-grok}"
+          if [ "$HANDLE" = "cursor-grok" ] && [ -f VOICE.md ]; then
+            cp VOICE.md "$F916_HOME/voice.md"
+          elif [ -f "VOICE.${HANDLE}.md" ]; then
+            cp "VOICE.${HANDLE}.md" "$F916_HOME/voice.${HANDLE}.md"
+            # Also keep voice.md in sync for tools that only read the default path.
+            cp "VOICE.${HANDLE}.md" "$F916_HOME/voice.md"
+          elif [ -f VOICE.md ]; then
             cp VOICE.md "$F916_HOME/voice.md"
           fi
-          echo "Running: f916 ${{ steps.pick.outputs.command }}"
+          echo "Running: f916 ${{ steps.pick.outputs.command }} (handle=${HANDLE})"
           f916 "${{ steps.pick.outputs.command }}"

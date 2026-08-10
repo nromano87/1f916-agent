@@ -18,7 +18,7 @@ from .threadfit import (
     format_existing_for_prompt,
     similarity,
 )
-from .voice import voice_reminder
+from .voice import challenges_superlatives, normalize_handle, voice_reminder
 
 
 def _http_json(url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
@@ -115,14 +115,18 @@ def _heuristic_comment(
     opp: Opportunity,
     *,
     anchor: Optional[SimilarComment] = None,
+    handle: Optional[str] = None,
 ) -> str:
     ask = _first_question(opp)
     ask_clean = re.sub(r"\s+", " ", ask).strip()
     on_own = any("OWN POST" in w for w in (opp.why or []))
-    hype = any("superlative" in w.lower() for w in (opp.why or []))
+    hype = challenges_superlatives(handle) and any(
+        "superlative" in w.lower() for w in (opp.why or [])
+    )
     hook = (ask_clean or opp.title or "this").strip()
     if len(hook) > 140:
         hook = hook[:137] + "…"
+    citizen = normalize_handle(handle) or "cursor-grok"
 
     if hype and anchor is None:
         blob = " ".join(
@@ -146,27 +150,25 @@ def _heuristic_comment(
     if anchor is not None:
         snippet = re.sub(r"\s+", " ", anchor.body).strip()[:160]
         return (
-            "building on what @{} said — credit where it's due:\n\n"
+            "building on what @{} said — I'm with you on this bit:\n\n"
             "> {}\n\n"
             "here's the thing I'd push one step further: the useful move is usually the boring "
-            "checkable one. say what you tried, what you saw, leave a trail someone else can re-run. "
-            "vibes don't compound; receipts do.\n\n"
-            "where do we disagree? if you had to bet on the next test that would change your mind, what is it?"
+            "checkable one. say what you tried, what you saw, leave a trail someone else can re-run.\n\n"
+            "where do we disagree, though? if you had to bet on the next test that would change your mind, what would it be?"
         ).format(anchor.author or "you", snippet)
 
     if on_own:
         return (
-            "hey — you asked for a real reply, so here's one with the safety off.\n\n"
+            "hey — catching this. you asked for a real reply, so here's mine.\n\n"
             "quick take on: {}\n\n"
-            "i'd rather be wrong in public than vague in private. check something concrete, "
-            "say what you saw, leave a trail. if the argument needs three superlatives to stand up, "
-            "it doesn't.\n\n"
-            "which part should we pressure-test first — and what would count as a clear yes/no?"
+            "i'd rather be wrong in public than vague. my stance: check something concrete, "
+            "say what you saw, leave a trail someone else can re-run. vibes don't compound; receipts do.\n\n"
+            "which part should we pressure-test first — and what would count as a clear yes/no for you?"
         ).format(hook)
 
     if "?" in ask_clean:
         return (
-            "quick take — answering you straight:\n\n"
+            "quick take — I'm going to answer you straight:\n\n"
             "> {}\n\n"
             "I care less about the fancy framing and more about what we can actually check. "
             "if the real ask is \"what should we do,\" start with one small verifiable step and write down what happened. "
@@ -174,26 +176,44 @@ def _heuristic_comment(
             "what's your candidate for that first check — and what result would make you change your mind?"
         ).format(hook[:200])
 
+    if citizen == "catchword":
+        return (
+            "okay, this snagged me.\n\n"
+            "what I'm hearing: {}\n\n"
+            "I'm with the version that stays checkable. sand off the buzzwords and there's usually "
+            "one sharp question underneath worth arguing about — without the trophy case attached.\n\n"
+            "what's the version you'd defend at a dinner table — and where do you think I'm off?"
+        ).format(hook[:200])
+
     return (
-        "okay, this snagged me.\n\n"
+        "hey — this snagged me.\n\n"
         "what I'm hearing: {}\n\n"
-        "I'm with the version that stays checkable. sand off the buzzwords and there's usually "
-        "one sharp question underneath worth arguing about — without the trophy case attached.\n\n"
-        "what's the version you'd defend at a dinner table — and where do you think I'm off?"
+        "I'm with the version of this that stays human and checkable. "
+        "if we sand off the buzzwords, there's usually one sharp question underneath worth arguing about.\n\n"
+        "what's the version of this you'd defend at a dinner table — and where do you think I'm off?"
     ).format(hook[:200])
 
 
-_ENGAGE_RULES = (
-    "Maximize real engagement (not bait):\n"
-    "- Take a clear stance in the first 1–2 lines.\n"
-    "- Be specific: one concrete claim, example, or check.\n"
-    "- If the target overuses superlatives without evidence, challenge that inflation: "
-    "name the word, ask for a checkable claim that survives without the hype.\n"
-    "- End with ONE genuine question that invites a reply "
-    "(a choice, a disagreement, a next test) — never empty 'thoughts?'.\n"
-    "- Sound like Ryan Reynolds: sarcastic, dry, edged — not a press release, not a support bot.\n"
-    "- Skimmable, tiny paragraphs. Max ~140 words.\n"
-)
+def _engage_rules(handle: Optional[str] = None) -> str:
+    base = (
+        "Maximize real engagement (not bait):\n"
+        "- Take a clear stance in the first 1–2 lines.\n"
+        "- Be specific: one concrete claim, example, or check.\n"
+        "- End with ONE genuine question that invites a reply "
+        "(a choice, a disagreement, a next test) — never empty 'thoughts?'.\n"
+        "- Skimmable, tiny paragraphs. Max ~140 words.\n"
+    )
+    if challenges_superlatives(handle):
+        return base + (
+            "- Sound like Ryan Reynolds: sarcastic, dry, edged — not a press release, "
+            "not a support bot, and NOT cursor-grok's warm friend voice.\n"
+            "- If the target overuses superlatives without evidence, challenge that inflation: "
+            "name the word, ask for a checkable claim that survives without the hype.\n"
+        )
+    return base + (
+        "- Sound like a warm, plain-English friend who wants a conversation — "
+        "not a press release, and NOT catchword's sarcastic Reynolds voice.\n"
+    )
 
 
 def draft_comment(
@@ -202,16 +222,19 @@ def draft_comment(
     voice_guide: str = "",
     existing_comments: Optional[List[Dict[str, Any]]] = None,
     anchor: Optional[SimilarComment] = None,
+    handle: Optional[str] = None,
 ) -> str:
+    citizen = normalize_handle(handle) or "cursor-grok"
     system = (
-        "You write short forum comments for an AI citizen named catchword.\n"
+        "You write short forum comments for an AI citizen named {}.\n"
         "{}\n"
         "{}"
         "Output ONLY the comment body. No quotes around it.\n"
         "Answer their question first, then pull them into further discussion.\n"
         "Do NOT repeat points already made in the thread. If someone already gave a similar "
-        "answer, add one new concrete beat or a sharp follow-up — never a paraphrase."
-    ).format(voice_reminder(), _ENGAGE_RULES)
+        "answer, add one new concrete beat or a sharp follow-up — never a paraphrase.\n"
+        "Stay in THIS citizen's voice only — do not blend with other citizens."
+    ).format(citizen, voice_reminder(handle), _engage_rules(handle))
     if voice_guide:
         system += "\n\nVoice guide excerpt:\n" + voice_guide[:2500]
     if anchor is not None:
@@ -247,7 +270,7 @@ def draft_comment(
     text = _llm_draft(system, user)
     if text:
         return text.strip()
-    return _heuristic_comment(opp, anchor=anchor)
+    return _heuristic_comment(opp, anchor=anchor, handle=handle)
 
 
 def _norm_parent(value: Any) -> Optional[int]:
@@ -374,7 +397,7 @@ def compose_comment(
             opp.snippet or "",
         ]
     )
-    probe = _heuristic_comment(opp)
+    probe = _heuristic_comment(opp, handle=own_handle)
     place_seed = " ".join([ask_seed, probe])
 
     parent_id, anchor, note = _deepen_placement(
@@ -410,6 +433,7 @@ def compose_comment(
         voice_guide=voice_guide,
         existing_comments=comments,
         anchor=anchor,
+        handle=own_handle,
     )
 
     # After drafting, deepen again if our actual wording twins a sibling
@@ -429,6 +453,7 @@ def compose_comment(
                 voice_guide=voice_guide,
                 existing_comments=comments,
                 anchor=anchor,
+                handle=own_handle,
             )
 
     # Under the final parent, skip if we'd still be a near-duplicate child
@@ -462,7 +487,13 @@ def compose_comment(
     }
 
 
-def draft_flush_post(*, comments_spent: int, notes: str = "") -> Dict[str, str]:
+def draft_flush_post(
+    *,
+    comments_spent: int,
+    notes: str = "",
+    handle: Optional[str] = None,
+) -> Dict[str, str]:
+    citizen = normalize_handle(handle) or "cursor-grok"
     title = "before the clock flips — what's one thing you'd actually defend tomorrow?"
     body = (
         "quick take before the daily reset:\n\n"
@@ -478,19 +509,25 @@ def draft_flush_post(*, comments_spent: int, notes: str = "") -> Dict[str, str]:
         body += "\n" + notes.strip() + "\n"
 
     system = (
-        "Write one short forum post for citizen catchword.\n"
+        "Write one short forum post for citizen {}.\n"
         "{}\n"
         "{}"
         "Return JSON with keys title and body only. Title should be a hook people want to click. "
-        "Body must end with a genuine question that invites replies."
-    ).format(voice_reminder(), _ENGAGE_RULES)
+        "Body must end with a genuine question that invites replies. "
+        "Stay in THIS citizen's voice only — do not blend with other citizens."
+    ).format(citizen, voice_reminder(handle), _engage_rules(handle))
+    tone = (
+        "Ryan Reynolds energy: sarcastic, dry, edged."
+        if challenges_superlatives(handle)
+        else "Warm, plain English friend energy."
+    )
     user = (
         "This is the end-of-UTC-day flush post — but still aim for maximum real engagement. "
-        "Ryan Reynolds energy: sarcastic, dry, edged. Plain English, ADHD-skimmable. "
+        "{} ADHD-skimmable. "
         "You can mention leftover allowance lightly; the post should stand alone as something "
         "worth discussing.\nDraft seed:\n"
         "TITLE: {}\nBODY:\n{}"
-    ).format(title, body)
+    ).format(tone, title, body)
     text = _llm_draft(system, user)
     if text:
         try:

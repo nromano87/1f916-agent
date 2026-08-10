@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from .client import ApiError, Client
 from .identity import Store
 from .journal import Journal
+from .voice import challenges_superlatives
 
 
 QUESTION_MARK = re.compile(r"\?")
@@ -51,7 +52,7 @@ DIRECT_ADDRESS = re.compile(
     re.I,
 )
 
-# Hype inflation catchword is supposed to puncture (Reynolds voice).
+# Hype inflation — scored only for citizens that challenge it (catchword).
 SUPERLATIVE_RE = re.compile(
     r"\b(?:"
     r"best(?:\s+ever)?|worst(?:\s+ever)?|greatest|most\s+important|"
@@ -115,7 +116,12 @@ def _invite_hits(text: str) -> List[str]:
     return hits
 
 
-def score_text(text: str, *, is_title: bool = False) -> Tuple[float, List[str], List[str]]:
+def score_text(
+    text: str,
+    *,
+    is_title: bool = False,
+    challenge_superlatives: bool = False,
+) -> Tuple[float, List[str], List[str]]:
     text = text or ""
     why: List[str] = []
     questions = _lines_with_questions(text)
@@ -133,12 +139,13 @@ def score_text(text: str, *, is_title: bool = False) -> Tuple[float, List[str], 
     # Soft preference for shorter open asks over giant dumps
     if 40 < len(text) < 2500 and qmarks:
         score += 2.0
-    supers = SUPERLATIVE_RE.findall(text)
-    if len(supers) >= 2:
-        # Prefer targets ripe for a hype challenge (without drowning real asks).
-        uniq = sorted({s.lower() for s in supers})
-        score += min(10.0, 2.5 * len(uniq))
-        why.append("superlative inflation: {}".format(", ".join(uniq[:5])))
+    if challenge_superlatives:
+        supers = SUPERLATIVE_RE.findall(text)
+        if len(supers) >= 2:
+            # Prefer targets ripe for a hype challenge (without drowning real asks).
+            uniq = sorted({s.lower() for s in supers})
+            score += min(10.0, 2.5 * len(uniq))
+            why.append("superlative inflation: {}".format(", ".join(uniq[:5])))
     return score, why, questions
 
 
@@ -216,6 +223,7 @@ def scan_square(
         )
         threads = fetch_threads(client, post_ids, max_workers=max_workers)
 
+    hunt_hype = challenges_superlatives(own_handle)
     opportunities: List[Opportunity] = []
     for pid, data in threads.items():
         post = data["post"]
@@ -233,8 +241,12 @@ def scan_square(
         if comment_count is None:
             comment_count = len(comments)
 
-        title_score, title_why, title_qs = score_text(title, is_title=True)
-        body_score, body_why, body_qs = score_text(body)
+        title_score, title_why, title_qs = score_text(
+            title, is_title=True, challenge_superlatives=hunt_hype
+        )
+        body_score, body_why, body_qs = score_text(
+            body, challenge_superlatives=hunt_hype
+        )
 
         # Top-level reply targets: other people's posts only
         if not is_own_post:
@@ -269,7 +281,9 @@ def scan_square(
         for cm in comments:
             c_author = cm.get("author") or ""
             c_body = cm.get("body") or ""
-            c_score, c_why, c_qs = score_text(c_body)
+            c_score, c_why, c_qs = score_text(
+                c_body, challenge_superlatives=hunt_hype
+            )
             # On our posts, lower bar — any clear ask / soft beg counts
             min_score = 3.0 if is_own_post else 5.0
             if c_score < min_score:

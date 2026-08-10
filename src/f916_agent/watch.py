@@ -18,7 +18,7 @@ from .identity import Store
 from .journal import Journal
 from .inbox import build_inbox
 from .markdown_html import to_html as md_html
-from .voice import ensure_voice, load_voice, voice_reminder
+from .voice import ensure_voice, load_voice, resolve_handle, voice_reminder
 from .votes import load_vote_log
 
 
@@ -296,7 +296,8 @@ def build_snapshot(client: Client, store: Store, journal: Journal) -> Dict[str, 
             "secret": identity.secret[:12] + "…",
         }
 
-    ensure_voice(store)
+    handle = resolve_handle(store)
+    ensure_voice(store, handle=handle)
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "identity": redacted,
@@ -308,8 +309,8 @@ def build_snapshot(client: Client, store: Store, journal: Journal) -> Dict[str, 
         "attest_latest": store.last_attest(),
         "official": official,
         "journal": journal.latest(100),
-        "voice": load_voice(store),
-        "voice_reminder": voice_reminder(),
+        "voice": load_voice(store, handle=handle),
+        "voice_reminder": voice_reminder(handle),
         "engage": store.load_state().get("last_engage_scan") or {},
         "votes": store.load_state().get("last_vote_scan") or {},
         "likes": load_vote_log(store, limit=120),
