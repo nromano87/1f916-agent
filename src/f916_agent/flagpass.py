@@ -165,10 +165,13 @@ def run_flag_pass(
     max_flags: int = 3,
 ) -> Dict[str, Any]:
     """Flag up to max_flags obvious scam rows. Never flags our own content."""
+    from .attest import ensure_daily_attest
+
     journal = Journal(store.root)
     identity = store.load()
     if not identity:
         raise RuntimeError("no identity — run f916 join first")
+    ensure_daily_attest(client, store)
     auth = client.with_secret(identity.secret)
     cands = scan_flag_candidates(auth, store, limit=max_flags * 2)
     actions: List[Dict[str, Any]] = []

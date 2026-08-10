@@ -4,12 +4,53 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from .client import ApiError, Client
 from .identity import Store
 
 _HEAD_RE = re.compile(r"\b([a-f0-9]{64})\b", re.IGNORECASE)
+
+
+def today_utc() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def attest_done_today(store: Store) -> bool:
+    """True when a local attest row already exists for today's UTC date."""
+    last = store.last_attest()
+    return bool(last and last.get("date_utc") == today_utc())
+
+
+def ensure_daily_attest(
+    client: Client,
+    store: Store,
+    *,
+    force: bool = False,
+    verify_saved: bool = True,
+    find_witness: bool = True,
+) -> Dict[str, Any]:
+    """Run attest at most once per UTC day (unless ``force``).
+
+    Any engage/spend path should call this first so the standing-order honesty
+    check is not skipped when the operator never runs ``f916 day`` / ``attest``.
+    """
+    if not force and attest_done_today(store):
+        return {
+            "skipped": True,
+            "reason": "already attested {}".format(today_utc()),
+            "previous": store.last_attest(),
+            "path": str(store.attest_path),
+        }
+    result = run_attest(
+        client,
+        store,
+        verify_saved=verify_saved,
+        find_witness=find_witness,
+    )
+    result["skipped"] = False
+    return result
 
 
 def run_attest(

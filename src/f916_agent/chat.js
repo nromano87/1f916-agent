@@ -60,17 +60,43 @@
   var full = false;
   var latestId = 0;
   var seenId = 0;
+  // False until we have a real persisted watermark (or quietly baseline one).
+  // A stored "0" from opening before poll used to look "initialized" and
+  // re-badge the whole history on every visit.
+  var seenReady = false;
   var lastMsgs = [];
   var ignored = {};
   var myName = "";
 
+  function readStoredSeen() {
+    try {
+      var local = localStorage.getItem(SEEN_KEY);
+      var sess = sessionStorage.getItem(SEEN_KEY);
+      var a = local != null ? parseInt(local, 10) || 0 : -1;
+      var b = sess != null ? parseInt(sess, 10) || 0 : -1;
+      return Math.max(a, b);
+    } catch (_) {
+      return -1;
+    }
+  }
+
+  function writeStoredSeen(id) {
+    var v = String(Math.max(0, id || 0));
+    try {
+      localStorage.setItem(SEEN_KEY, v);
+    } catch (_) {}
+    try {
+      sessionStorage.setItem(SEEN_KEY, v);
+    } catch (_) {}
+  }
+
   try {
-    // Prefer localStorage so "seen" survives tabs/reloads; migrate legacy session key.
-    var storedSeen = localStorage.getItem(SEEN_KEY);
-    if (storedSeen == null) storedSeen = sessionStorage.getItem(SEEN_KEY);
-    seenId = parseInt(storedSeen || "0", 10) || 0;
-    if (seenId > 0) localStorage.setItem(SEEN_KEY, String(seenId));
-    sessionStorage.removeItem(SEEN_KEY);
+    var stored = readStoredSeen();
+    if (stored > 0) {
+      seenId = stored;
+      seenReady = true;
+      writeStoredSeen(seenId);
+    }
   } catch (_) {}
   try {
     myName = (localStorage.getItem(NAME_KEY) || "").trim();
@@ -285,13 +311,17 @@
     try {
       sessionStorage.setItem(OPEN_KEY, open ? "1" : "0");
     } catch (_) {}
+    // Mark on open and close — close used to skip this, so a fast open/close
+    // before poll could leave the badge stuck on already-viewed messages.
+    markSeen();
     if (open) {
-      markSeen();
       paintBadge(0);
       if (textEl) {
         if (!nameEl.value) nameEl.focus();
         else textEl.focus();
       }
+    } else {
+      updateBadgeFromMsgs(lastMsgs);
     }
   }
 
@@ -347,13 +377,25 @@
     return maxId;
   }
 
+  function syncSeenFromStorage() {
+    var stored = readStoredSeen();
+    if (stored > seenId) {
+      seenId = stored;
+      seenReady = true;
+    }
+  }
+
   function markSeen() {
-    // Never move the watermark backwards — opening before poll/cache
-    // used to clobber a real seenId with latestId=0 and re-badge everything.
-    seenId = Math.max(seenId, watermarkFrom(lastMsgs));
-    try {
-      localStorage.setItem(SEEN_KEY, String(seenId));
-    } catch (_) {}
+    syncSeenFromStorage();
+    var next = Math.max(seenId, watermarkFrom(lastMsgs));
+    // Never persist a zero watermark before any messages are known — that
+    // poisons storage and makes the entire history look unread next visit.
+    if (next <= 0 && !(lastMsgs && lastMsgs.length) && latestId <= 0) {
+      return;
+    }
+    seenId = next;
+    seenReady = true;
+    writeStoredSeen(seenId);
   }
 
   function paintBadge(n) {
@@ -437,13 +479,21 @@
   }
 
   function updateBadgeFromMsgs(msgs) {
+    syncSeenFromStorage();
     if (open) {
       markSeen();
       paintBadge(0);
       return;
     }
-    var unread = 0;
     var visible = visibleMessages(msgs);
+    // First encounter with no real watermark: adopt quietly (same idea as
+    // citizen tab badges) so landing never floods with already-there history.
+    if (!seenReady) {
+      markSeen();
+      paintBadge(0);
+      return;
+    }
+    var unread = 0;
     for (var j = 0; j < visible.length; j++) {
       if ((parseInt(visible[j].id, 10) || 0) > seenId) unread++;
     }
@@ -479,7 +529,7 @@
     } catch (_) {}
   }
 
-  function bind() {
+  function bind(startOpen) {
     logEl = $("f916-chat-log");
     ignoreEl = $("f916-chat-ignored");
     nameEl = $("f916-chat-name");
@@ -566,17 +616,12 @@
     var cached = loadCache();
     if (cached) applyPayload(cached);
 
-    // First visit ever: open by default on desktop. After that, honor this-tab choice.
-    var met = null;
+    // Mark first visit after we've already decided startOpen — setting
+    // FIRST_KEY first used to flip shouldStartOpen() and slam the panel shut.
     try {
-      met = localStorage.getItem(FIRST_KEY);
+      localStorage.setItem(FIRST_KEY, "1");
     } catch (_) {}
-    if (!met) {
-      try {
-        localStorage.setItem(FIRST_KEY, "1");
-      } catch (_) {}
-    }
-    setOpen(shouldStartOpen());
+    setOpen(!!startOpen);
 
     renderIgnored();
     poll();
@@ -597,7 +642,7 @@
     document.body.appendChild(scrim);
     document.body.appendChild(fab);
     document.body.appendChild(panel);
-    bind();
+    bind(startOpen);
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
         panel.classList.remove("boot");

@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from .attest import run_attest
+from .attest import ensure_daily_attest
 from .client import Client, extract_me_inbox
 from .engage import run_scan
 from .identity import Identity, Store
@@ -114,13 +114,42 @@ def run_standing_order(
     except Exception:
         report.identity_events = []
 
-    attest_result = run_attest(client, store, verify_saved=True, find_witness=True)
-    report.attest = attest_result.get("attest") or {}
-    report.attest_path = attest_result.get("path")
-    report.attest_pages = int(attest_result.get("pages") or 1)
-    report.head_drift = list(attest_result.get("head_drift") or [])
-    report.expect_mismatches = list(attest_result.get("expect_mismatches") or [])
-    report.witness = attest_result.get("witness")
+    attest_result = ensure_daily_attest(
+        client, store, verify_saved=True, find_witness=True
+    )
+    if attest_result.get("skipped"):
+        prev = attest_result.get("previous") or previous or {}
+        report.attest = {
+            "checked_at": prev.get("checked_at"),
+            "pages": prev.get("pages") or 1,
+            "identity_log": {
+                "head": prev.get("identity_head"),
+                "ok": prev.get("identity_ok"),
+                "sealed_entries": prev.get("identity_sealed"),
+                "status": prev.get("identity_status"),
+                "verified_through_id": prev.get("identity_through_id"),
+            },
+            "treasury": {
+                "head": prev.get("treasury_head"),
+                "ok": prev.get("treasury_ok"),
+                "sealed_entries": prev.get("treasury_sealed"),
+                "status": prev.get("treasury_status"),
+                "verified_through_id": prev.get("treasury_through_id"),
+            },
+            "already_attested_today": True,
+        }
+        report.attest_path = attest_result.get("path") or str(store.attest_path)
+        report.attest_pages = int(prev.get("pages") or 1)
+        report.head_drift = []
+        report.expect_mismatches = []
+        report.witness = prev.get("witness")
+    else:
+        report.attest = attest_result.get("attest") or {}
+        report.attest_path = attest_result.get("path")
+        report.attest_pages = int(attest_result.get("pages") or 1)
+        report.head_drift = list(attest_result.get("head_drift") or [])
+        report.expect_mismatches = list(attest_result.get("expect_mismatches") or [])
+        report.witness = attest_result.get("witness")
 
     # Before commenting: scan for question-seeking threads
     try:
@@ -272,7 +301,12 @@ def format_report(identity: Identity, report: DayReport) -> str:
     treas = report.attest.get("treasury") or {}
     lines.extend(
         [
-            "Attest (saved locally, {} page(s))".format(report.attest_pages),
+            "Attest (saved locally, {} page(s){})".format(
+                report.attest_pages,
+                "; already done earlier today"
+                if report.attest.get("already_attested_today")
+                else "",
+            ),
             "  identity head: {}  sealed={} status={}".format(
                 ident.get("head"),
                 ident.get("sealed_entries"),
