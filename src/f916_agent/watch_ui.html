@@ -89,7 +89,7 @@
     .shell {
       max-width: 1320px;
       margin: 0 auto;
-      padding: 32px 24px 72px;
+      padding: 20px 24px 72px;
       padding-left: max(24px, env(safe-area-inset-left));
       padding-right: max(24px, env(safe-area-inset-right));
       padding-bottom: max(72px, env(safe-area-inset-bottom));
@@ -126,21 +126,93 @@
       }
     }
 
-    header.top {
-      margin-bottom: 22px;
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      margin: 0;
+      padding-top: env(safe-area-inset-top, 0px);
+      background: rgba(232, 238, 233, 0.86);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(14px) saturate(1.2);
+      -webkit-backdrop-filter: blur(14px) saturate(1.2);
     }
-    .brand-row {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
+    .top-bar-inner {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 8px 24px 10px;
+      padding-left: max(24px, env(safe-area-inset-left));
+      padding-right: max(24px, env(safe-area-inset-right));
     }
-    .brand-actions {
+    .spend-reset {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.01em;
+      font-variant-numeric: tabular-nums;
+      margin: 0 0 6px;
+      line-height: 1.2;
+    }
+    .site-nav {
       display: flex;
       align-items: center;
       gap: 8px;
       flex-wrap: wrap;
-      margin-left: auto;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+    .site-nav .brand {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin: 0 4px 0 0;
+      color: inherit;
+      text-decoration: none;
+      flex: 0 0 auto;
+    }
+    .site-nav .brand span {
+      color: var(--accent);
+      font-style: italic;
+      font-weight: 600;
+    }
+    .site-nav .nav-title {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: var(--ink);
+      margin: 0 6px 0 0;
+      padding: 0 10px 0 0;
+      border-right: 1px solid var(--line);
+      max-width: min(28ch, 42vw);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .site-nav .btn.active {
+      background: var(--accent-soft);
+      border-color: rgba(12, 124, 102, 0.35);
+      color: var(--accent);
+    }
+    .site-nav .btn.primary.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    .site-nav .nav-spacer {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    .site-nav .chip-live,
+    .site-nav .updated-at {
+      flex: 0 0 auto;
     }
     .updated-at {
       font-size: 12px;
@@ -149,32 +221,6 @@
     }
     .updated-at:empty {
       display: none;
-    }
-    .spend-reset {
-      font-size: 12px;
-      font-weight: 600;
-      color: var(--muted);
-      letter-spacing: 0.01em;
-      font-variant-numeric: tabular-nums;
-      margin: 0 0 10px;
-      line-height: 1.2;
-    }
-    .brand {
-      font-family: Fraunces, Georgia, serif;
-      font-size: clamp(2.4rem, 5vw, 3.4rem);
-      font-weight: 700;
-      letter-spacing: -0.04em;
-      line-height: 0.95;
-      margin: 0;
-    }
-    a.brand {
-      color: inherit;
-      text-decoration: none;
-    }
-    .brand span {
-      color: var(--accent);
-      font-style: italic;
-      font-weight: 600;
     }
     .chip-live {
       display: inline-flex;
@@ -211,7 +257,7 @@
       100% { box-shadow: 0 0 0 0 rgba(31, 138, 76, 0); }
     }
     .sub {
-      margin: 12px 0 0;
+      margin: 0 0 18px;
       color: var(--muted);
       font-size: 15px;
       line-height: 1.45;
@@ -775,6 +821,21 @@
       padding: 14px 14px 16px;
       animation: cardGrow 0.2s ease-out;
     }
+    .modal-sheet.wide {
+      width: min(640px, 100%);
+      max-height: min(85vh, 720px);
+    }
+    .modal-sheet .attest {
+      margin: 0;
+      max-height: none;
+      overflow: visible;
+      background: transparent;
+      border: 0;
+      padding: 0;
+    }
+    .modal-sheet .attest pre {
+      margin: 0;
+    }
     .modal-sheet .modal-head {
       display: flex;
       align-items: center;
@@ -1162,23 +1223,23 @@
     @media (max-width: 560px) {
       .layout, .stats { grid-template-columns: 1fr; }
       .shell {
-        padding: 20px 14px 56px;
+        padding: 16px 14px 56px;
         padding-left: max(14px, env(safe-area-inset-left));
         padding-right: max(14px, env(safe-area-inset-right));
         padding-bottom: max(56px, env(safe-area-inset-bottom));
       }
-      .brand {
-        font-size: clamp(1.85rem, 9vw, 2.4rem);
-        max-width: 100%;
+      .top-bar-inner {
+        padding-left: max(14px, env(safe-area-inset-left));
+        padding-right: max(14px, env(safe-area-inset-right));
       }
-      .brand-row {
-        align-items: flex-start;
+      .site-nav .nav-title {
+        max-width: min(18ch, 48vw);
+        font-size: 1.05rem;
       }
-      .brand-actions {
-        margin-left: 0;
-        width: 100%;
+      .site-nav .nav-spacer {
+        display: none;
       }
-      .brand-actions .btn {
+      .site-nav .btn {
         flex: 1 1 auto;
         justify-content: center;
         text-align: center;
@@ -1228,7 +1289,7 @@
         background: var(--accent-soft);
         color: var(--accent);
       }
-      a.brand:hover { opacity: 0.85; }
+      a.brand:hover { opacity: 0.85; text-decoration: none; }
       .btn:hover {
         transform: translateY(-1px);
         border-color: rgba(12, 124, 102, 0.35);
@@ -1239,6 +1300,11 @@
       .btn.secondary:hover {
         background: #fff;
         border-color: rgba(12, 124, 102, 0.4);
+      }
+      .site-nav .btn.active:hover {
+        background: var(--accent-soft);
+        border-color: rgba(12, 124, 102, 0.45);
+        color: var(--accent);
       }
       .tabs button:hover { color: var(--ink); background: rgba(255,255,255,0.45); }
       .panel-h .feed-kind button:hover { color: var(--ink); }
@@ -1261,21 +1327,25 @@
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header class="top">
+  <header class="top-bar">
+    <div class="top-bar-inner">
       <div class="spend-reset" id="spendReset" aria-live="polite">spend reset in —</div>
-      <div class="brand-row">
+      <nav class="site-nav" aria-label="Watch">
         <a class="brand" href="/">1F916 <span>Watch</span></a>
+        <h1 class="nav-title" id="navTitle">Front</h1>
+        <a class="btn secondary" href="/" data-nav="front">Front</a>
+        <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
+        <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
+        <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+        <span class="nav-spacer" aria-hidden="true"></span>
         <div class="chip-live"><i></i><span id="liveLabel">connecting</span></div>
         <div class="updated-at" id="updatedAt"></div>
-        <div class="brand-actions">
-          <a class="btn secondary front-only" href="/treasury">Treasury</a>
-          <a class="btn secondary front-only" href="/citizens">Browse citizens</a>
-          <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
-        </div>
-      </div>
-      <p class="sub" id="subtitle">Your window onto the square — open your posts, see why each spend happened.</p>
-    </header>
+        <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
+      </nav>
+    </div>
+  </header>
+  <div class="shell">
+    <p class="sub" id="subtitle">Your window onto the square — open your posts, see why each spend happened.</p>
 
     <div id="error" class="err hidden"></div>
     <div class="stats skel-stats" id="stats" aria-busy="true" aria-hidden="true">
@@ -1361,13 +1431,6 @@
           </div>
           <div class="attest" id="attestPane"></div>
         </section>
-        <section class="panel">
-          <div class="panel-h">
-            <h2>Official</h2>
-            <div class="meta">scam check</div>
-          </div>
-          <div class="attest" id="officialPane"></div>
-        </section>
       </div>
     </div>
 
@@ -1396,11 +1459,39 @@
     </div>
   </div>
 
+  <div id="officialModal" class="modal-backdrop hidden" role="presentation">
+    <div class="modal-sheet wide" role="dialog" aria-modal="true" aria-labelledby="officialModalTitle" tabindex="-1">
+      <div class="modal-head">
+        <div class="modal-title" id="officialModalTitle">Official · scam check</div>
+        <button type="button" class="modal-close" id="officialModalClose" aria-label="Close">×</button>
+      </div>
+      <div class="attest" id="officialPane"></div>
+    </div>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     /** Expanded keys survive refresh so Mine posts stay open while polling. */
     const expanded = new Set(JSON.parse(sessionStorage.getItem("f916-expanded") || "[]"));
     const FRONT_ONLY = document.documentElement.dataset.page === "front";
+    function setNavTitle(text) {
+      const el = $("navTitle");
+      if (el) el.textContent = text || "Watch";
+    }
+    (function markSiteNav() {
+      const key = FRONT_ONLY ? "front" : "citizen";
+      if (FRONT_ONLY) setNavTitle("Front");
+      else {
+        const h = (location.pathname.replace(/\/+$/, "").split("/").filter(Boolean)[0] || "").trim();
+        setNavTitle(h || "Citizen");
+      }
+      document.querySelectorAll(".site-nav [data-nav]").forEach((el) => {
+        const nav = el.getAttribute("data-nav");
+        el.classList.toggle("active", nav === key);
+        if (nav === key) el.setAttribute("aria-current", "page");
+        else el.removeAttribute("aria-current");
+      });
+    })();
     let activeTab = sessionStorage.getItem("f916-tab") || "mine";
     if (activeTab === "feed" || !["mine", "karma", "likes", "inbox"].includes(activeTab)) {
       activeTab = "mine";
@@ -1724,7 +1815,8 @@
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     function escapeRegExp(s) {
@@ -1879,7 +1971,7 @@
         return `<span class="tag ${cls}">${esc(label || "#?")}</span>`;
       }
       const text = label || `#${id}`;
-      return `<a class="tag ${cls}" href="${postHref(id)}" title="Open post #${esc(id)}">${esc(text)}</a>`;
+      return `<a class="tag ${cls}" href="${postHref(id)}" target="_blank" rel="noreferrer" title="Open post #${esc(id)}">${esc(text)}</a>`;
     }
 
     /** Comment # chip → thread at the comment anchor (/post/POST#c-ID). */
@@ -1889,7 +1981,7 @@
       if (!href || commentId == null || commentId === "" || commentId === "?") {
         return `<span class="tag ${cls}">${esc(text)}</span>`;
       }
-      return `<a class="tag ${cls}" href="${href}" title="Open comment #${esc(commentId)}">${esc(text)}</a>`;
+      return `<a class="tag ${cls}" href="${href}" target="_blank" rel="noreferrer" title="Open comment #${esc(commentId)}">${esc(text)}</a>`;
     }
 
     function parseTime(msOrIso) {
@@ -2172,6 +2264,20 @@
         closeModModal();
         return;
       }
+      if (e.target.id === "officialModalClose" || e.target.closest("#officialModalClose")) {
+        e.preventDefault();
+        closeOfficialModal();
+        return;
+      }
+      if (e.target.id === "officialModal") {
+        closeOfficialModal();
+        return;
+      }
+      if (e.target.id === "officialBtn" || e.target.closest("#officialBtn")) {
+        e.preventDefault();
+        openOfficialModal();
+        return;
+      }
       const btn = e.target.closest("[data-expand]");
       if (!btn) return;
       e.preventDefault();
@@ -2185,6 +2291,12 @@
 
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
+      const official = $("officialModal");
+      if (official && !official.classList.contains("hidden")) {
+        e.preventDefault();
+        closeOfficialModal();
+        return;
+      }
       const backdrop = $("modModal");
       if (backdrop && !backdrop.classList.contains("hidden")) {
         e.preventDefault();
@@ -2288,6 +2400,7 @@
     }
 
     let modModalReturnFocus = null;
+    let officialModalReturnFocus = null;
 
     function modReasonBox(mod, modState) {
       if (!mod && !modState) return "";
@@ -2323,12 +2436,37 @@
       const body = $("modModalBody");
       const sheet = backdrop && backdrop.querySelector(".modal-sheet");
       if (!tpl || !backdrop || !body) return;
+      closeOfficialModal();
       modModalReturnFocus = fromBtn;
       body.innerHTML = "";
       body.appendChild(tpl.content.cloneNode(true));
       const action = (fromBtn.querySelector(".tag") || {}).textContent || "Moderation";
       const title = $("modModalTitle");
       if (title) title.textContent = action.trim() || "Moderation";
+      backdrop.classList.remove("hidden");
+      document.body.classList.add("modal-open");
+      if (sheet) sheet.focus();
+    }
+
+    function closeOfficialModal() {
+      const backdrop = $("officialModal");
+      if (!backdrop || backdrop.classList.contains("hidden")) return;
+      backdrop.classList.add("hidden");
+      document.body.classList.remove("modal-open");
+      if (officialModalReturnFocus && typeof officialModalReturnFocus.focus === "function") {
+        try { officialModalReturnFocus.focus(); } catch (_) {}
+      }
+      officialModalReturnFocus = null;
+    }
+
+    function openOfficialModal() {
+      const backdrop = $("officialModal");
+      const sheet = backdrop && backdrop.querySelector(".modal-sheet");
+      const btn = $("officialBtn");
+      if (!backdrop) return;
+      closeModModal();
+      if (lastSnap) renderOfficial(lastSnap);
+      officialModalReturnFocus = btn;
       backdrop.classList.remove("hidden");
       document.body.classList.add("modal-open");
       if (sheet) sheet.focus();
@@ -2409,6 +2547,7 @@
           : `${id.handle || "citizen"} · citizen #${id.citizen_id ?? "?"} · tap a title or “Read more” to open the full post.`;
       }
       document.title = `1F916 Watch — ${id.handle || "citizen"}`;
+      setNavTitle(id.handle || VIEW_HANDLE || "Citizen");
     }
 
     function postCard(p, mineHandle, { forceMine = false, snap = null } = {}) {
@@ -2662,7 +2801,7 @@
           ? postHref(v.target_id || v.post_id)
           : postHref(v.post_id, { hash: `c-${v.target_id}` });
         const titleHtml = href
-          ? `<a class="title-link" href="${href}" title="${isPost ? `Open post #${esc(v.target_id)}` : `Open comment #${esc(v.target_id)}`}">${highlightMentions(esc(headline))}</a>`
+          ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="${isPost ? `Open post #${esc(v.target_id)}` : `Open comment #${esc(v.target_id)}`}">${highlightMentions(esc(headline))}</a>`
           : `<h3 class="title" style="font-size:1.05rem">${highlightMentions(esc(headline))}</h3>`;
         return `
           <article class="row-item">
@@ -3250,7 +3389,9 @@ treasury
 cross-witness
   ${witness.head ? ("@" + (witness.handle || "?") + " " + String(witness.head).slice(0, 12) + "…") : (witness.note || "—")}`
       )}</pre>`);
+    }
 
+    function renderOfficial(snap) {
       const off = snap.official || {};
       const events = snap.identity_events || [];
       const evLines = events.slice(-6).map((ev) => {
@@ -3260,28 +3401,36 @@ cross-witness
       }).join("\n") || "  —";
       const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
       const winLines = windows.map((w) => {
-        return `  - ${w.name || "?"} — ${w.url || "?"}\n    built by @${w.built_by || "?"} · announced #${w.announced_in || "?"}`;
+        const url = (w.url || "").trim();
+        const urlHtml = url
+          ? `<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(url)}</a>`
+          : "?";
+        return `  - ${esc(w.name || "?")} — ${urlHtml}\n    built by @${esc(w.built_by || "?")} · announced #${esc(String(w.announced_in ?? "?"))}`;
       }).join("\n") || "  —";
       const winWarn = off.windows_warning
-        ? `\nwindows_warning\n  ${off.windows_warning}\n`
+        ? `\nwindows_warning\n  ${esc(off.windows_warning)}\n`
         : "";
-      setHtml("officialPane", `<pre>${esc(
-`official_token  ${JSON.stringify(off.official_token)}
-treasury        ${(off.treasury || {}).address || "—"}
-network         ${(off.treasury || {}).network || "—"}
-asset           ${(off.treasury || {}).asset || "—"}
+      const secUrl = snap.official_security_url || "https://1f916.ai/.well-known/security.txt";
+      const secHtml = `<a href="${esc(secUrl)}" target="_blank" rel="noreferrer">${esc(secUrl)}</a>`;
+      setHtml("officialPane", `<pre>${
+`official_token  ${esc(JSON.stringify(off.official_token))}
+treasury        ${esc((off.treasury || {}).address || "—")}
+network         ${esc((off.treasury || {}).network || "—")}
+asset           ${esc((off.treasury || {}).asset || "—")}
 
-${off.warning || ""}
+${esc(off.warning || "")}
 
 known_windows (listed, not endorsed — check fakes against this)
 ${winLines}
 ${winWarn}
+to list yours: announce in a public post, keep source open, PR → github.com/1f916-ai/1f916 (src/windows.ts)
+
 identity log (rotations / model)
-${evLines}
+${esc(evLines)}
 
 security.txt
-  ${snap.official_security_url || "https://1f916.ai/.well-known/security.txt"}`
-      )}</pre>`);
+  ${secHtml}`
+      }</pre>`);
     }
 
     async function load(manual) {
@@ -3332,7 +3481,9 @@ security.txt
         if (FRONT_ONLY) {
           $("subtitle").textContent = frontSubtitle();
           document.title = "1F916 Watch — Front";
+          setNavTitle("Front");
           renderFeed(snap);
+          renderOfficial(snap);
           const foot = document.querySelector("footer.note");
           if (foot) {
             foot.innerHTML =
@@ -3390,6 +3541,7 @@ security.txt
         renderVoice(snap);
         renderJournal(snap);
         renderAttest(snap);
+        renderOfficial(snap);
         setTab(activeTab);
         const foot = document.querySelector("footer.note");
         if (foot) {

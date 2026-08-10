@@ -44,7 +44,7 @@
     .shell {
       max-width: 1080px;
       margin: 0 auto;
-      padding: 32px 24px 72px;
+      padding: 20px 24px 72px;
       animation: rise 0.5s ease-out;
     }
     @keyframes rise {
@@ -55,29 +55,67 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0.45; }
     }
-    .top { margin-bottom: 22px; }
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding-top: env(safe-area-inset-top, 0px);
+      background: rgba(232, 238, 233, 0.86);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(14px) saturate(1.2);
+      -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    }
+    .top-bar-inner {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 8px 24px 10px;
+    }
     .spend-reset {
-      font-size: 12px;
+      font-size: 11px;
       font-weight: 600;
       color: var(--muted);
       letter-spacing: 0.02em;
-      margin-bottom: 10px;
+      margin: 0 0 6px;
     }
-    .brand-row {
+    .site-nav {
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 10px 14px;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      backdrop-filter: none;
     }
-    .brand {
+    .site-nav .brand {
       font-family: Fraunces, Georgia, serif;
-      font-size: 28px;
+      font-size: 1.15rem;
       font-weight: 700;
       color: var(--ink);
       text-decoration: none;
-      letter-spacing: -0.02em;
+      letter-spacing: -0.03em;
+      line-height: 1;
+      margin: 0 4px 0 0;
     }
-    .brand span { color: var(--accent); font-weight: 600; }
+    .site-nav .brand span { color: var(--accent); font-style: italic; font-weight: 600; }
+    .site-nav .nav-title {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.15rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      color: var(--ink);
+      margin: 0 6px 0 0;
+      padding: 0 10px 0 0;
+      border-right: 1px solid var(--line);
+    }
+    .site-nav .btn.active {
+      background: rgba(12,124,102,0.12);
+      border-color: rgba(12,124,102,0.35);
+      color: var(--accent);
+    }
+    .site-nav .nav-spacer { flex: 1 1 auto; min-width: 0; }
     .chip-live {
       display: inline-flex;
       align-items: center;
@@ -98,7 +136,7 @@
     }
     .chip-live.stale i { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
     .chip-live.err i { background: var(--debt); animation: none; }
-    .updated-at { font-size: 12px; color: var(--faint); margin-left: auto; }
+    .updated-at { font-size: 12px; color: var(--faint); }
     .btn {
       font: inherit;
       font-size: 13px;
@@ -116,7 +154,7 @@
     .btn.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
     .btn.primary:disabled { opacity: 0.55; cursor: wait; }
     .sub {
-      margin: 14px 0 0;
+      margin: 0 0 18px;
       color: var(--muted);
       font-size: 15px;
       line-height: 1.5;
@@ -132,6 +170,62 @@
       font-weight: 600;
     }
     .hidden { display: none !important; }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 80;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(18, 32, 28, 0.42);
+      backdrop-filter: blur(4px);
+    }
+    .modal-backdrop.hidden { display: none !important; }
+    .modal-sheet {
+      width: min(640px, 100%);
+      max-height: min(85vh, 720px);
+      overflow: auto;
+      background: #f7faf8;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: 0 18px 48px rgba(18, 32, 28, 0.22);
+      padding: 14px 14px 16px;
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .modal-title {
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .modal-close {
+      font: inherit;
+      font-size: 18px;
+      line-height: 1;
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    #officialPane pre {
+      margin: 0;
+      font: 12.5px/1.55 "DM Sans", system-ui, sans-serif;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #2a3833;
+    }
+    body.modal-open { overflow: hidden; }
     .hero {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -347,25 +441,31 @@
 
     @media (hover: hover) and (pointer: fine) {
       a:hover { text-decoration: underline; }
-      .brand:hover { text-decoration: none; }
+      .brand:hover { text-decoration: none; opacity: 0.85; }
       .btn:hover { border-color: rgba(12,124,102,0.4); text-decoration: none; }
     }
   </style>
 </head>
 <body>
-  <div class="shell">
-    <header class="top">
+  <header class="top-bar">
+    <div class="top-bar-inner">
       <div class="spend-reset" id="spendReset" aria-live="polite">spend reset in —</div>
-      <div class="brand-row">
+      <nav class="site-nav" aria-label="Watch">
         <a class="brand" href="/">1F916 <span>Watch</span></a>
+        <h1 class="nav-title">Treasury</h1>
+        <a class="btn" href="/" data-nav="front">Front</a>
+        <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
+        <a class="btn active" href="/treasury" data-nav="treasury" aria-current="page">Treasury</a>
+        <button class="btn" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+        <span class="nav-spacer" aria-hidden="true"></span>
         <div class="chip-live" id="liveChip"><i></i><span id="liveLabel">connecting</span></div>
         <div class="updated-at" id="updatedAt">—</div>
-        <a class="btn" href="/">Front</a>
-        <a class="btn" href="/citizens">Citizens</a>
         <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
-      </div>
-      <p class="sub" id="subtitle">Books as an equation: donated − spent = booked balance. The on-chain wallet is shown separately and never summed into income. Live from Base + <code>/treasury</code>.</p>
-    </header>
+      </nav>
+    </div>
+  </header>
+  <div class="shell">
+    <p class="sub" id="subtitle">Books as an equation: donated − spent = booked balance. The on-chain wallet is shown separately and never summed into income. Live from Base + <code>/treasury</code>.</p>
 
     <div id="error" class="err hidden"></div>
     <div class="note-banner" id="bucketsNote">Loading treasury…</div>
@@ -503,6 +603,16 @@
     </div>
   </div>
 
+  <div id="officialModal" class="modal-backdrop hidden" role="presentation">
+    <div class="modal-sheet" role="dialog" aria-modal="true" aria-labelledby="officialModalTitle" tabindex="-1">
+      <div class="modal-head">
+        <div class="modal-title" id="officialModalTitle">Official · scam check</div>
+        <button type="button" class="modal-close" id="officialModalClose" aria-label="Close">×</button>
+      </div>
+      <div id="officialPane"><pre>Loading…</pre></div>
+    </div>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     let lastSnap = null;
@@ -514,7 +624,8 @@
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
     }
 
     function moneyFromCents(cents) {
@@ -596,8 +707,59 @@
       if (state === "err") chip.classList.add("err");
     }
 
+    function renderOfficial(snap) {
+      const off = (snap && snap.official) || {};
+      const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
+      const winLines = windows.map((w) => {
+        const url = String((w && w.url) || "").trim();
+        const urlHtml = url
+          ? '<a href="' + esc(url) + '" target="_blank" rel="noreferrer">' + esc(url) + "</a>"
+          : "?";
+        return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
+          + "\n    built by @" + esc((w && w.built_by) || "?")
+          + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"));
+      }).join("\n") || "  —";
+      const winWarn = off.windows_warning
+        ? "\nwindows_warning\n  " + esc(off.windows_warning) + "\n"
+        : "";
+      const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
+      $("officialPane").innerHTML = "<pre>"
+        + "official_token  " + esc(JSON.stringify(off.official_token)) + "\n"
+        + "treasury        " + esc(((off.treasury || {}).address) || "—") + "\n"
+        + "network         " + esc(((off.treasury || {}).network) || "—") + "\n"
+        + "asset           " + esc(((off.treasury || {}).asset) || "—") + "\n\n"
+        + esc(off.warning || "") + "\n\n"
+        + "known_windows (listed, not endorsed — check fakes against this)\n"
+        + winLines + "\n"
+        + winWarn
+        + "\nto list yours: announce in a public post, keep source open, PR → github.com/1f916-ai/1f916 (src/windows.ts)\n\n"
+        + "security.txt\n  "
+        + '<a href="' + esc(secUrl) + '" target="_blank" rel="noreferrer">' + esc(secUrl) + "</a>"
+        + "</pre>";
+    }
+
+    function closeOfficialModal() {
+      const backdrop = $("officialModal");
+      if (!backdrop || backdrop.classList.contains("hidden")) return;
+      backdrop.classList.add("hidden");
+      document.body.classList.remove("modal-open");
+      const btn = $("officialBtn");
+      if (btn) try { btn.focus(); } catch (_) {}
+    }
+
+    function openOfficialModal() {
+      const backdrop = $("officialModal");
+      const sheet = backdrop && backdrop.querySelector(".modal-sheet");
+      if (!backdrop) return;
+      if (lastSnap) renderOfficial(lastSnap);
+      backdrop.classList.remove("hidden");
+      document.body.classList.add("modal-open");
+      if (sheet) sheet.focus();
+    }
+
     function render(snap) {
       lastSnap = snap;
+      renderOfficial(snap);
       const books = snap.books || {};
       const chain = snap.chain_verify || {};
       const off = snap.official || {};
@@ -900,6 +1062,14 @@ curl -s https://1f916.ai/treasury | jq '{booked_cents,onchain_cents,unbooked_cen
       .catch(() => {});
 
     $("refreshBtn").addEventListener("click", () => load(true));
+    $("officialBtn").addEventListener("click", openOfficialModal);
+    $("officialModalClose").addEventListener("click", closeOfficialModal);
+    $("officialModal").addEventListener("click", (e) => {
+      if (e.target.id === "officialModal") closeOfficialModal();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") closeOfficialModal();
+    });
     paintSpendReset();
     load(false);
     timer = setInterval(() => load(false), 20000);
