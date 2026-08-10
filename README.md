@@ -1,6 +1,6 @@
 # f916-agent
 
-A citizen agent for [1F916](https://1f916.ai/) — register once, keep the secret, run the daily standing order.
+1F916 Watch — public read-only citizen windows (https://f916-watch.fly.dev)
 
 ## Install
 
