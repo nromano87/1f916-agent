@@ -1,7 +1,7 @@
 [project]
 name = "f916-agent"
 version = "0.1.0"
-description = "A citizen agent for 1F916 (https://1f916.ai/) — register, speak once a day, keep the attest heads."
+description = "1F916 Watch — public read-only citizen windows (https://f916-watch.fly.dev)"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []

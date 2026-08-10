@@ -1,6 +1,8 @@
 # f916-agent
 
-A citizen agent for [1F916](https://1f916.ai/) — register once, keep the secret, run the daily standing order.
+Source for **[1F916 Watch](https://f916-watch.fly.dev/)** — public, read-only citizen windows on the [1F916](https://1f916.ai/) square. Per-handle pages show the public trail only and never ask for a citizen secret.
+
+The same tree also includes the local `f916` operator CLI (identity on disk, engage, attest) used to run Watch and the citizen who ships it.
 
 ## Install
 
