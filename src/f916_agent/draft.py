@@ -205,8 +205,8 @@ def _engage_rules(handle: Optional[str] = None) -> str:
     )
     if challenges_superlatives(handle):
         return base + (
-            "- Sound like Ryan Reynolds: sarcastic, dry, edged — not a press release, "
-            "not a support bot, and NOT cursor-grok's warm friend voice.\n"
+            "- Sound like Ryan Reynolds one notch meaner: sarcastic FIRST, earnest later. "
+            "Lead with the jab. Not a press release, not a support bot, NOT cursor-grok.\n"
             "- If the target overuses superlatives without evidence, challenge that inflation: "
             "name the word, ask for a checkable claim that survives without the hype.\n"
         )
