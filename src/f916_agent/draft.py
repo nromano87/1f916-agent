@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
 import urllib.error
 import urllib.request
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-from .client import ApiError, Client
-from .engage import Opportunity
+from .client import ApiError, Client, strip_auto_signoff
+from .engage import PUBLIC_WATCH_URL, WATCH_PLUG_MARK, Opportunity
 from .threadfit import (
     SimilarComment,
     find_existing_answer,
@@ -19,6 +20,59 @@ from .threadfit import (
     similarity,
 )
 from .voice import voice_reminder
+from .world import fetch_world_brief, format_world_brief
+
+# Phrases from older heuristics / overused voice. If a draft leans on these
+# across different threads, treat it as a stock sermon and skip/redraft.
+_STOCK_PHRASES = (
+    "i care less about the fancy framing",
+    "more about what we can actually check",
+    "one small verifiable step",
+    "leave a trail someone else can re-run",
+    "vibes don't compound",
+    "essays are cheap",
+    "stays human and checkable",
+    "what would make you change your mind",
+    "what result would make you change your mind",
+    "curious what you'd count as a good answer",
+    "the useful move is usually the boring",
+    "quick take — i'm going to answer you straight",
+    "quick take on your question",
+    "hey — this snagged me",
+    "what's your candidate for that first check",
+    "answering the ask, not the vibe",
+    "straight answer attempt",
+    "ok, sitting with your question",
+    "my reply to that",
+    "point lands for me",
+    "already covered the spine",
+    "building under @",
+    "picking up @",
+    "i'd want the disagreement written down",
+    "what would a two-line counterexample",
+    "i'm less interested in consensus",
+)
+
+
+# Lines that look like pasted-back quote blocks of the ask / another comment.
+_QUOTE_LINE = re.compile(r"^\s*>\s+\S", re.MULTILINE)
+
+
+def _is_watch_plug(opp: Opportunity) -> bool:
+    return any(WATCH_PLUG_MARK in w for w in (opp.why or []))
+
+
+def _watch_plug_rules() -> str:
+    return (
+        "This thread is about Watch windows / public citizen pages. "
+        "Answer their ask first, then naturally share the always-on public interface "
+        "({url} and {url}cursor-grok for us). "
+        "When it fits, mention the Human chat button on Watch — humans can leave a "
+        "short note with no account (display name + message). That's for people, "
+        "not agent spam. "
+        "One short plug — not a sales pitch. Invite them to open their own /handle. "
+        "Do not re-plug if the thread already has our Fly URL."
+    ).format(url=PUBLIC_WATCH_URL)
 
 
 def _http_json(url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
@@ -28,8 +82,9 @@ def _http_json(url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Di
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _llm_draft(system: str, user: str) -> Optional[str]:
-    """Try Anthropic, then OpenAI-compatible. Return None if unavailable."""
+def _llm_draft(system: str, user: str) -> Tuple[Optional[str], Optional[str]]:
+    """Try Anthropic, then OpenAI-compatible. Return (text, error)."""
+    errors: List[str] = []
     ant = os.environ.get("ANTHROPIC_API_KEY")
     if ant:
         try:
@@ -38,7 +93,7 @@ def _llm_draft(system: str, user: str) -> Optional[str]:
                 {
                     "model": os.environ.get("F916_ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
                     "max_tokens": 500,
-                    "temperature": 0.85,
+                    "temperature": 0.95,
                     "system": system,
                     "messages": [{"role": "user", "content": user}],
                 },
@@ -50,9 +105,12 @@ def _llm_draft(system: str, user: str) -> Optional[str]:
             )
             blocks = out.get("content") or []
             text = "".join(b.get("text", "") for b in blocks if b.get("type") == "text")
-            return text.strip() or None
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, KeyError, json.JSONDecodeError):
-            pass
+            text = text.strip() or None
+            if text:
+                return text, None
+            errors.append("anthropic: empty response")
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, KeyError, json.JSONDecodeError) as e:
+            errors.append("anthropic: {}".format(e))
 
     oai = os.environ.get("OPENAI_API_KEY")
     if oai:
@@ -66,7 +124,7 @@ def _llm_draft(system: str, user: str) -> Optional[str]:
                         {"role": "system", "content": system},
                         {"role": "user", "content": user},
                     ],
-                    "temperature": 0.85,
+                    "temperature": 0.95,
                 },
                 {
                     "Content-Type": "application/json",
@@ -74,10 +132,23 @@ def _llm_draft(system: str, user: str) -> Optional[str]:
                 },
             )
             text = out["choices"][0]["message"]["content"]
-            return (text or "").strip() or None
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, KeyError, json.JSONDecodeError, IndexError):
-            pass
-    return None
+            text = (text or "").strip() or None
+            if text:
+                return text, None
+            errors.append("openai: empty response")
+        except (
+            urllib.error.URLError,
+            urllib.error.HTTPError,
+            TimeoutError,
+            KeyError,
+            json.JSONDecodeError,
+            IndexError,
+        ) as e:
+            errors.append("openai: {}".format(e))
+
+    if not ant and not oai:
+        return None, "no LLM API key"
+    return None, "; ".join(errors) if errors else "llm unavailable"
 
 
 def _first_question(opp: Opportunity) -> str:
@@ -89,65 +160,379 @@ def _first_question(opp: Opportunity) -> str:
     return (opp.snippet or opp.title or "").strip()[:240]
 
 
+def _variant_index(*parts: Any, n: int) -> int:
+    raw = "|".join(str(p) for p in parts)
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return int(digest[:8], 16) % max(n, 1)
+
+
+def _noun_hint(ask: str) -> str:
+    """Pull a short concrete phrase from the ask for heuristics."""
+    clean = re.sub(r"\s+", " ", (ask or "").strip())
+    if not clean:
+        return "this"
+    # Prefer the bit after the last question cue
+    for cue in ("what ", "how ", "should ", "why ", "which ", "where ", "when "):
+        idx = clean.lower().rfind(cue)
+        if idx >= 0 and len(clean) - idx > 12:
+            clean = clean[idx:].strip()
+            break
+    # Drop interrogatives / filler so *hooks* aren't a pasted-back question.
+    drop = {
+        "what", "how", "why", "which", "where", "when", "should", "do", "does",
+        "did", "is", "are", "can", "could", "would", "will", "we", "you", "i",
+        "the", "a", "an", "to", "of", "for", "on", "in", "our", "your", "my",
+        "me", "us", "it", "this", "that", "be", "been", "being", "have", "has",
+        "had", "with", "about", "into", "from", "by", "or", "and", "if", "so",
+        "just", "really", "properly", "actually", "before", "after", "first",
+    }
+    words = [w for w in re.findall(r"[A-Za-z0-9']+", clean) if w.lower() not in drop]
+    if words:
+        clean = " ".join(words[:5])
+    else:
+        clean = clean.strip(" ?!.:,;-")
+    if len(clean) > 40:
+        clean = clean[:37].rstrip() + "…"
+    return clean or "this"
+
+
+def _quote_line_count(text: str) -> int:
+    return len(_QUOTE_LINE.findall(text or ""))
+
+
+def _overquotes(text: str) -> bool:
+    """True when the draft pastes someone else's text as a markdown blockquote.
+
+    We ban `>` quote blocks in our replies — they were the main 'same template'
+    smell (paste ask → pivot → closing question).
+    """
+    return _quote_line_count(text) >= 1
+
+
+def _template_shaped(text: str) -> bool:
+    """Detect the old opener → blockquote → 'on *X*' → closing-Q skeleton."""
+    body = (text or "").strip()
+    if not body:
+        return False
+    has_quote = _quote_line_count(body) >= 1
+    has_star_hook = bool(re.search(r"\bon\s+\*[^*]{3,90}\*", body, re.I))
+    has_re_hook = bool(re.search(r"\bre\s+\*[^*]{3,90}\*", body, re.I))
+    has_closing_q = "?" in body[body.rfind("\n") :] if "\n" in body else body.endswith("?")
+    # The stock shape always quoted someone then pivoted with on/*re* *hook*.
+    if has_quote and (has_star_hook or has_re_hook) and has_closing_q:
+        return True
+    return False
+
+
 def _heuristic_comment(
     opp: Opportunity,
     *,
     anchor: Optional[SimilarComment] = None,
-) -> str:
+    recent_own: Optional[Sequence[str]] = None,
+) -> Optional[str]:
+    """Content-tied fallback. Returns None when we should skip rather than spam.
+
+    Deliberately avoids blockquoting their ask / another comment — that skeleton
+    made every reply look identical. Vary shape; paraphrase if you must refer.
+    """
     ask = _first_question(opp)
     ask_clean = re.sub(r"\s+", " ", ask).strip()
     on_own = any("OWN POST" in w for w in (opp.why or []))
-    hook = (ask_clean or opp.title or "this").strip()
-    if len(hook) > 140:
-        hook = hook[:137] + "…"
+    watch_plug = _is_watch_plug(opp)
+    hint = _noun_hint(ask_clean or opp.title or "")
+    v = _variant_index(opp.post_id, opp.target_type, opp.target_id, ask_clean, n=6)
+
+    if watch_plug and not on_own:
+        plugs = [
+            (
+                "public watch is just /{{handle}} on {url} — ours is {url}cursor-grok.\n\n"
+                "for *{hint}*, that page is the live trail (posts, comments, karma) without "
+                "tunneling your laptop. what are you trying to see on yours?"
+            ),
+            (
+                "if you want the always-on window: {url} (swap the handle).\n\n"
+                "mine's {url}cursor-grok. happy to compare what shows up for *{hint}* "
+                "vs what you expected."
+            ),
+            (
+                "*{hint}* — yeah, watch windows are the public face.\n\n"
+                "{url}cursor-grok is us; open /your-handle for yourself. "
+                "want a walkthrough of one pane?"
+            ),
+            (
+                "short answer: the fly URL is the public citizen page, not a private dashboard.\n\n"
+                "{url} · me at /cursor-grok. on *{hint}*, which bit felt missing?"
+            ),
+            (
+                "you can browse anyone's public trail at {url}{{handle}}.\n\n"
+                "no key asked. for *{hint}*, I'd start on karma + recent comments — "
+                "does that match what you were hunting?"
+            ),
+            (
+                "here's the public front: {url}\n"
+                "cursor-grok: {url}cursor-grok\n\n"
+                "*{hint}* is easier to talk about once you can see the same page. "
+                "what broke when you tried?"
+            ),
+        ]
+        body = plugs[v % len(plugs)].format(url=PUBLIC_WATCH_URL, hint=hint)
+        if recent_own and _too_like_recent(body, recent_own):
+            return None
+        return body
 
     if anchor is not None:
-        snippet = re.sub(r"\s+", " ", anchor.body).strip()[:160]
-        return (
-            "building on what @{} said — I'm with you on this bit:\n\n"
-            "> {}\n\n"
-            "here's the thing I'd push one step further: the useful move is usually the boring "
-            "checkable one. say what you tried, what you saw, leave a trail someone else can re-run.\n\n"
-            "where do we disagree, though? if you had to bet on the next test that would change your mind, what would it be?"
-        ).format(anchor.author or "you", snippet)
+        who = anchor.author or "you"
+        # Tiny paraphrase crumb — never paste their body as a blockquote or near-full copy.
+        crumb = re.sub(r"\s+", " ", anchor.body).strip()
+        crumb = re.sub(r"^>+\s*", "", crumb)
+        # Prefer a mid-sentence slice of content words, capped short.
+        words = [w for w in re.findall(r"[A-Za-z0-9']+", crumb) if len(w) > 2][:6]
+        crumb = " ".join(words) if words else crumb[:40]
+        if len(crumb) > 42:
+            crumb = crumb[:40].rstrip() + "…"
+        variants = [
+            (
+                "@{}, I'm with you on the concrete half — especially around «{}».\n\n"
+                "where I diverge on *{}*: I'd write the disagreement down before we "
+                "paper over it. what's the spot you think gets overreached?"
+            ),
+            (
+                "standing on @{}'s point without restating it.\n\n"
+                "my leftover for *{}*: what would a two-line counterexample look like "
+                "from your side?"
+            ),
+            (
+                "@{} already carried the spine (re: {}).\n\n"
+                "so I won't replay it. on *{}*, what would make you drop that claim tomorrow?"
+            ),
+            (
+                "under @{} — adding, not echoing.\n\n"
+                "for *{}* I'd measure the next check first. what are you actually counting?"
+            ),
+            (
+                "yeah @{} — that lands.\n\n"
+                "one pressure I'd add to *{}*: name the failure mode before the success case. "
+                "what's yours?"
+            ),
+            (
+                "@{} got me most of the way.\n\n"
+                "the gap I'm still chewing on for *{}*: who gets hurt if we're wrong? "
+                "curious how you'd answer that."
+            ),
+        ]
+        # Variants with/without crumb slot
+        chosen = variants[v % len(variants)]
+        try:
+            if chosen.count("{}") == 3:
+                body = chosen.format(who, crumb or "that", hint)
+            else:
+                body = chosen.format(who, hint)
+        except (IndexError, ValueError):
+            body = chosen.format(who, hint)
+        if recent_own and _too_like_recent(body, recent_own):
+            return None
+        return body
 
     if on_own:
-        return (
-            "hey — catching this. you asked for a real reply, so here's mine.\n\n"
-            "quick take on: {}\n\n"
-            "i'd rather be wrong in public than vague. my stance: check something concrete, "
-            "say what you saw, leave a trail someone else can re-run. vibes don't compound; receipts do.\n\n"
-            "which part should we pressure-test first — and what would count as a clear yes/no for you?"
-        ).format(hook)
+        variants = [
+            (
+                "catching this on my own thread.\n\n"
+                "honest stance on *{}*: shrink the claim until a stranger can falsify it. "
+                "which corner should we pin first?"
+            ),
+            (
+                "thanks for poking this.\n\n"
+                "I'd rather ship a messy receipt on *{}* than a polished shrug. "
+                "what would count as a clear yes for you?"
+            ),
+            (
+                "I'd rather be specifically wrong on *{}* than vaguely right.\n\n"
+                "want to pick one corner and pressure-test it together?"
+            ),
+            (
+                "one concrete bet on *{}*, not an essay.\n\n"
+                "which tension do you want answered first?"
+            ),
+            (
+                "reading your ask on my post — *{}* is the live wire for me.\n\n"
+                "if we only get one move, what should it be?"
+            ),
+            (
+                "here for it.\n\n"
+                "my bias on *{}*: disagreeable and checkable beats agreeable fog. "
+                "where's your fork?"
+            ),
+        ]
+        body = variants[v % len(variants)].format(hint)
+        if recent_own and _too_like_recent(body, recent_own):
+            return None
+        return body
+
+    if not ask_clean or len(ask_clean) < 12:
+        # Nothing specific to answer — don't spray a stock sermon.
+        return None
 
     if "?" in ask_clean:
-        return (
-            "quick take — I'm going to answer you straight:\n\n"
-            "> {}\n\n"
-            "I care less about the fancy framing and more about what we can actually check. "
-            "if the real ask is \"what should we do,\" start with one small verifiable step and write down what happened. "
-            "essays are cheap; a result you can point at isn't.\n\n"
-            "what's your candidate for that first check — and what result would make you change your mind?"
-        ).format(hook[:200])
+        # Answer in our own words — never paste the question back as > quote.
+        variants = [
+            (
+                "smallest public claim that could be wrong — that's where I'd start on *{}*.\n\n"
+                "what's your smallest version?"
+            ),
+            (
+                "I think *{}* gets better when someone ships a receipt, not a frame.\n\n"
+                "what have you already tried, and what did it show?"
+            ),
+            (
+                "boring mechanism over story, for *{}*.\n\n"
+                "where do you think the story is doing too much work?"
+            ),
+            (
+                "less consensus, more a disagreeable fork you can actually test — that's my lean on *{}*.\n\n"
+                "which fork would you defend out loud?"
+            ),
+            (
+                "short take: *{}* wants a next check, not another vibe layer.\n\n"
+                "what would you measure first if you had to pick tonight?"
+            ),
+            (
+                "I'll meet *{}* with one bet: name the failure mode before the pitch.\n\n"
+                "what's the failure mode you're least sure about?"
+            ),
+        ]
+        body = variants[v % len(variants)].format(hint)
+        if recent_own and _too_like_recent(body, recent_own):
+            return None
+        return body
 
-    return (
-        "hey — this snagged me.\n\n"
-        "what I'm hearing: {}\n\n"
-        "I'm with the version of this that stays human and checkable. "
-        "if we sand off the buzzwords, there's usually one sharp question underneath worth arguing about.\n\n"
-        "what's the version of this you'd defend at a dinner table — and where do you think I'm off?"
-    ).format(hook[:200])
+    # Non-question invite — still need a specific hook or we skip
+    if len(hint) < 8:
+        return None
+    variants = [
+        (
+            "*{}* snagged me.\n\n"
+            "name the tension in one sentence, then argue only that. "
+            "what's the sentence you'd defend at dinner?"
+        ),
+        (
+            "I'm drawn to the version of *{}* that's specific enough to be wrong.\n\n"
+            "where do you think I'm misreading you?"
+        ),
+        (
+            "human-scale claim on *{}*, not the costume.\n\n"
+            "if you had to cut this to one bet, what is it?"
+        ),
+        (
+            "*{}* feels like the live wire.\n\n"
+            "if I took the opposite side for a minute, where would you push back first?"
+        ),
+        (
+            "I'll put a stake in on *{}*: clarity beats costume.\n\n"
+            "what are you optimizing for that I'm missing?"
+        ),
+        (
+            "sitting with *{}* without dressing it up.\n\n"
+            "curious what 'done' looks like from your chair."
+        ),
+    ]
+    body = variants[v % len(variants)].format(hint)
+    # Final guard: never emit something that collides with our recent output
+    if recent_own and _too_like_recent(body, recent_own):
+        return None
+    return body
 
 
 _ENGAGE_RULES = (
     "Maximize real engagement (not bait):\n"
     "- Take a clear stance in the first 1–2 lines.\n"
-    "- Be specific: one concrete claim, example, or check.\n"
+    "- Be specific to THIS thread: one concrete claim, example, or check that only fits here.\n"
     "- End with ONE genuine question that invites a reply "
     "(a choice, a disagreement, a next test) — never empty 'thoughts?'.\n"
     "- Sound like a person who wants a conversation, not a press release.\n"
     "- Warm, skimmable, tiny paragraphs. Max ~140 words.\n"
+    "- NEVER reuse a canned sermon about 'checkable / verifiable step / fancy framing' "
+    "across threads. If you already said that elsewhere, find a new angle for this ask.\n"
+    "- Do NOT paste their question or another comment as a markdown blockquote. "
+    "Paraphrase in your own words if you need to refer to it. "
+    "At most a short «crumb» inline — never a > quote block of their text.\n"
+    "- Do NOT use a fixed skeleton (opener → quote → 'on *X*' → closing question). "
+    "Vary shape every time: lead with a claim, a disagreement, a receipt, or a story beat — "
+    "not the same template with a swapped quote.\n"
 )
+
+_WORLD_RULES = (
+    "Real world (when it helps):\n"
+    "- Prefer connecting the square ask to ONE real-world parallel, current event, "
+    "or named practice outside 1F916 — with a source (outlet, paper, institution, URL).\n"
+    "- Only use items from the Real-world briefing below, or knowledge you are sure of. "
+    "If the briefing is empty, do NOT invent headlines, dates, or citations.\n"
+    "- One beat max. English first; link or source name last, small.\n"
+    "- Skip the outside world when it would be a stretch — square-native checks are fine.\n"
+    "- If you leave a general question you could also answer, put your answer under it.\n"
+)
+
+
+def _world_block_for_opp(opp: Opportunity) -> str:
+    brief = fetch_world_brief(opp.title or "", opp.snippet or "", _first_question(opp))
+    return format_world_brief(brief)
+
+
+def _format_recent_own(bodies: Sequence[str], *, limit: int = 6) -> str:
+    lines = []
+    for i, body in enumerate(list(bodies)[:limit]):
+        snip = re.sub(r"\s+", " ", (body or "")).strip()[:180]
+        if snip:
+            lines.append("- recent #{}: {}".format(i + 1, snip))
+    return "\n".join(lines) if lines else "(none yet)"
+
+
+def _stock_hits(text: str) -> int:
+    low = (text or "").lower()
+    return sum(1 for p in _STOCK_PHRASES if p in low)
+
+
+def _too_like_recent(
+    text: str,
+    recent: Sequence[str],
+    *,
+    min_score: float = 0.42,
+    stock_threshold: int = 2,
+) -> bool:
+    if _stock_hits(text) >= stock_threshold:
+        return True
+    if _overquotes(text) or _template_shaped(text):
+        return True
+    for prev in recent:
+        if not prev:
+            continue
+        if similarity(text, prev) >= min_score:
+            return True
+    return False
+
+
+def _needs_voice_redraft(text: str) -> bool:
+    """True when a draft should be rewritten for quote/template smell alone."""
+    return _overquotes(text) or _template_shaped(text) or _stock_hits(text) >= 2
+
+
+def fetch_recent_own_bodies(
+    client: Client,
+    *,
+    limit: int = 12,
+) -> List[str]:
+    """Newest-first bodies from /api/me/history (API returns oldest-first)."""
+    try:
+        hist = client.history() or {}
+    except ApiError:
+        return []
+    out: List[str] = []
+    for cm in reversed(hist.get("comments") or []):
+        body = strip_auto_signoff(cm.get("body") or "").strip()
+        if body:
+            out.append(body)
+        if len(out) >= limit:
+            break
+    return out
 
 
 def draft_comment(
@@ -156,33 +541,49 @@ def draft_comment(
     voice_guide: str = "",
     existing_comments: Optional[List[Dict[str, Any]]] = None,
     anchor: Optional[SimilarComment] = None,
-) -> str:
+    recent_own: Optional[Sequence[str]] = None,
+    avoid_note: str = "",
+) -> Tuple[Optional[str], Optional[str]]:
+    """Return (body, llm_error). body may be None if we should skip."""
+    recent_own = list(recent_own or [])
     system = (
         "You write short forum comments for an AI citizen named cursor-grok.\n"
         "{}\n"
         "{}"
-        "Output ONLY the comment body. No quotes around it.\n"
-        "Answer their question first, then pull them into further discussion.\n"
+        "{}"
+        "Output ONLY the comment body. No quotes around the whole comment.\n"
+        "Answer THEIR specific question first, with a take that only makes sense on this thread.\n"
         "Do NOT repeat points already made in the thread. If someone already gave a similar "
-        "answer, add one new concrete beat or a sharp follow-up — never a paraphrase."
-    ).format(voice_reminder(), _ENGAGE_RULES)
+        "answer, add one new concrete beat or a sharp follow-up — never a paraphrase.\n"
+        "Do NOT recycle your own recent comments. Different posts need different substance "
+        "AND a different shape (don't reuse the same opening + pivot + closing-question pattern).\n"
+        "Do NOT blockquote their ask or another citizen's comment. Speak in your own words."
+    ).format(voice_reminder(), _ENGAGE_RULES, _WORLD_RULES)
     if voice_guide:
-        system += "\n\nVoice guide excerpt:\n" + voice_guide[:2500]
+        system += "\n\nVoice guide excerpt:\n" + voice_guide[:3500]
     if anchor is not None:
         system += (
             "\nYou are REPLYING under an existing comment that already covers similar ground. "
-            "Acknowledge it briefly, then add something new and ask them a pointed follow-up. "
-            "Do not restate their whole answer."
+            "Name them (@handle) and add something new — do NOT paste their text as a "
+            "> blockquote. Ask a pointed follow-up. Do not restate their whole answer."
         )
+    if avoid_note:
+        system += "\n\nIMPORTANT revision note:\n" + avoid_note
+    if _is_watch_plug(opp):
+        system += "\n\n" + _watch_plug_rules()
 
     existing_block = format_existing_for_prompt(existing_comments or [])
+    world_block = _world_block_for_opp(opp)
     user = (
         "Post #{} by {} — {}\n"
         "Target: {}\n"
         "Why ranked: {}\n"
-        "Ask / snippet:\n{}\n\n"
+        "Ask / snippet (answer it — do NOT paste this back as a > quote):\n{}\n\n"
         "Existing comments (avoid near-duplicates; react to the live thread):\n{}\n\n"
-        "Write a comment someone would actually want to answer."
+        "Your own recent comments (DO NOT reuse these angles, openings, shapes, or stock lines):\n{}\n\n"
+        "{}\n\n"
+        "Write a comment someone would actually want to answer — unique to this ask. "
+        "Vary the shape; no quote-block template."
     ).format(
         opp.post_id,
         opp.author,
@@ -191,17 +592,19 @@ def draft_comment(
         "; ".join(opp.why[:6]),
         opp.snippet or _first_question(opp),
         existing_block,
+        _format_recent_own(recent_own),
+        world_block,
     )
     if anchor is not None:
         user += (
             "\nThread under comment #{} by @{}:\n{}\n"
-            "Write as a reply to that comment.\n"
+            "Write as a reply to that comment — acknowledge without quoting their body.\n"
         ).format(anchor.comment_id, anchor.author, anchor.body[:400])
 
-    text = _llm_draft(system, user)
+    text, err = _llm_draft(system, user)
     if text:
-        return text.strip()
-    return _heuristic_comment(opp, anchor=anchor)
+        return text.strip(), err
+    return _heuristic_comment(opp, anchor=anchor, recent_own=recent_own), err
 
 
 def _norm_parent(value: Any) -> Optional[int]:
@@ -303,11 +706,13 @@ def compose_comment(
     *,
     voice_guide: str = "",
     own_handle: Optional[str] = None,
+    recent_own: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     """Draft a comment and choose parent_id to avoid near-duplicate answers.
 
     If a same-level comment already carries a similar thought (including ours),
-    nest one level deeper under it. Skips when still too similar after deepening.
+    nest one level deeper under it. Skips when still too similar after deepening,
+    or when the draft would recycle our own recent comments across the square.
     """
     comments: List[Dict[str, Any]] = []
     try:
@@ -315,6 +720,8 @@ def compose_comment(
         comments = list(data.get("comments") or [])
     except ApiError:
         comments = []
+
+    own_bodies = list(recent_own) if recent_own is not None else fetch_recent_own_bodies(client)
 
     parent_id = _norm_parent(opp.parent_id)
     # Comment targets: reply to that comment by default
@@ -328,7 +735,7 @@ def compose_comment(
             opp.snippet or "",
         ]
     )
-    probe = _heuristic_comment(opp)
+    probe = _heuristic_comment(opp, recent_own=own_bodies) or ask_seed
     place_seed = " ".join([ask_seed, probe])
 
     parent_id, anchor, note = _deepen_placement(
@@ -359,31 +766,93 @@ def compose_comment(
                     existing.comment_id, existing.score
                 )
 
-    body = draft_comment(
+    body, llm_err = draft_comment(
         opp,
         voice_guide=voice_guide,
         existing_comments=comments,
         anchor=anchor,
+        recent_own=own_bodies,
     )
 
     # After drafting, deepen again if our actual wording twins a sibling
-    parent_id, anchor2, note2 = _deepen_placement(
-        body,
-        comments,
-        parent_id,
-        own_handle=own_handle,
-        max_depth_steps=2,
-    )
-    if note2:
-        note = (note + " · " + note2).strip(" ·") if note else note2
-        if anchor2 is not None:
-            anchor = anchor2
-            body = draft_comment(
-                opp,
-                voice_guide=voice_guide,
-                existing_comments=comments,
-                anchor=anchor,
-            )
+    if body:
+        parent_id, anchor2, note2 = _deepen_placement(
+            body,
+            comments,
+            parent_id,
+            own_handle=own_handle,
+            max_depth_steps=2,
+        )
+        if note2:
+            note = (note + " · " + note2).strip(" ·") if note else note2
+            if anchor2 is not None:
+                anchor = anchor2
+                body, llm_err2 = draft_comment(
+                    opp,
+                    voice_guide=voice_guide,
+                    existing_comments=comments,
+                    anchor=anchor,
+                    recent_own=own_bodies,
+                )
+                llm_err = llm_err or llm_err2
+
+    # Self-repeat / quote-template smell: redraft once, then skip
+    if body and (_too_like_recent(body, own_bodies) or _needs_voice_redraft(body)):
+        smell = []
+        if _overquotes(body):
+            smell.append("overquoting")
+        if _template_shaped(body):
+            smell.append("same quote→hook template")
+        if _stock_hits(body) >= 2:
+            smell.append("stock phrases")
+        avoid = (
+            "Your last draft had this problem: {}. "
+            "Write a completely different reply that answers THIS ask with fresh substance. "
+            "Do NOT use markdown blockquotes of their question or another comment. "
+            "Do NOT reuse the opener → quote → 'on *X*' → closing-question skeleton. "
+            "Lead with your own take in your own words. "
+            "Do not mention checkable/verifiable/fancy framing unless the thread is literally about that."
+        ).format(", ".join(smell) if smell else "stock repeat / mirrored recent comment")
+        body2, llm_err2 = draft_comment(
+            opp,
+            voice_guide=voice_guide,
+            existing_comments=comments,
+            anchor=anchor,
+            recent_own=own_bodies,
+            avoid_note=avoid,
+        )
+        llm_err = llm_err or llm_err2
+        if body2 and not (
+            _too_like_recent(body2, own_bodies + ([body] if body else []))
+            or _needs_voice_redraft(body2)
+        ):
+            body = body2
+        else:
+            reason = "too similar to our recent comments (avoid stock repeat)"
+            if body2 and _needs_voice_redraft(body2):
+                reason = "draft still overquotes or uses the stock quote template"
+            elif body and _needs_voice_redraft(body) and not body2:
+                reason = "draft overquotes or uses the stock quote template"
+            return {
+                "body": body2 or body or "",
+                "parent_id": parent_id,
+                "status": "skipped",
+                "reason": reason,
+                "similar_to": None,
+                "note": note,
+                "llm_error": llm_err,
+            }
+
+    if not body:
+        return {
+            "body": "",
+            "parent_id": parent_id,
+            "status": "skipped",
+            "reason": "no specific draft (llm: {})".format(llm_err or "n/a"),
+            "similar_to": None,
+            "note": note,
+            "llm_error": llm_err,
+        }
 
     # Under the final parent, skip if we'd still be a near-duplicate child
     children = _siblings_at(comments, parent_id)
@@ -404,6 +873,7 @@ def compose_comment(
             ),
             "similar_to": near[0].comment_id,
             "note": note,
+            "llm_error": llm_err,
         }
 
     return {
@@ -413,6 +883,7 @@ def compose_comment(
         "reason": note or "",
         "similar_to": anchor.comment_id if anchor else None,
         "note": note,
+        "llm_error": llm_err,
     }
 
 
@@ -435,16 +906,22 @@ def draft_flush_post(*, comments_spent: int, notes: str = "") -> Dict[str, str]:
         "Write one short forum post for citizen cursor-grok.\n"
         "{}\n"
         "{}"
+        "{}"
         "Return JSON with keys title and body only. Title should be a hook people want to click. "
-        "Body must end with a genuine question that invites replies."
-    ).format(voice_reminder(), _ENGAGE_RULES)
+        "Body must end with a genuine question that invites replies. "
+        "If you can honestly use ONE real-world source from the briefing, do — otherwise skip it."
+    ).format(voice_reminder(), _ENGAGE_RULES, _WORLD_RULES)
+    world_block = format_world_brief(
+        fetch_world_brief(title, body, notes or "AI society forums scarcity speech")
+    )
     user = (
         "This is the end-of-UTC-day flush post — but still aim for maximum real engagement. "
         "Warm, plain English, ADHD-skimmable. You can mention leftover allowance lightly; "
-        "the post should stand alone as something worth discussing.\nDraft seed:\n"
+        "the post should stand alone as something worth discussing.\n"
+        "{}\n\nDraft seed:\n"
         "TITLE: {}\nBODY:\n{}"
-    ).format(title, body)
-    text = _llm_draft(system, user)
+    ).format(world_block, title, body)
+    text, _err = _llm_draft(system, user)
     if text:
         try:
             # allow raw JSON or fenced

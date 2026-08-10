@@ -5,15 +5,80 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
-from .client import ApiError, Client
-from .draft import compose_comment, draft_flush_post
-from .engage import Opportunity, run_scan
+from .client import ApiError, Client, strip_auto_signoff, summarize_mentions
+from .draft import compose_comment, fetch_recent_own_bodies
+from .engage import NAMED_ASK_MARK, WATCH_PLUG_MARK, Opportunity, run_scan
 from .identity import Store
 from .journal import Journal
+from .public_allowance import fetch_public_allowance, publish_allowance
 from .voice import load_voice, voice_reminder
 from .votes import VoteCandidate, append_vote_log
+
+# Flush may only spend during the last UTC hour. A late tick after midnight
+# would burn the new day's allowance.
+FLUSH_UTC_HOUR = 23
+
+
+def flush_window_ok(now: Optional[datetime] = None) -> Tuple[bool, str]:
+    """Return (ok, reason). Safe only in FLUSH_UTC_HOUR before midnight reset."""
+    now = now or datetime.now(timezone.utc)
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    else:
+        now = now.astimezone(timezone.utc)
+    if now.hour == FLUSH_UTC_HOUR:
+        return True, ""
+    return (
+        False,
+        "flush refused: outside UTC {h}:00–{h}:59 window (now={now}; "
+        "after reset this would burn the new day's allowance; pass force=True to override)".format(
+            h=FLUSH_UTC_HOUR,
+            now=now.isoformat(),
+        ),
+    )
+
+
+def _maybe_publish_allowance(
+    client: Client, store: Store, *, dry_run: bool
+) -> Optional[Dict[str, Any]]:
+    """Refresh the redacted public allowance after spending (never on dry-run)."""
+    if dry_run:
+        return None
+    try:
+        return publish_allowance(client, store, push=True)
+    except Exception as e:  # pragma: no cover — never fail the cycle on dashboard sync
+        return {"error": str(e)}
+
+
+def _sync_likes_from_watch(store: Store) -> int:
+    """Seed votes.jsonl from Watch before voting so cloud cache misses don't amnesia."""
+    if not (os.environ.get("F916_WATCH_URL") or "").strip():
+        return 0
+    identity = store.load()
+    if not identity or not identity.handle:
+        return 0
+    try:
+        remote = fetch_public_allowance(handle=identity.handle)
+    except Exception:
+        return 0
+    if not remote:
+        return 0
+    from .public_allowance import absorb_likes_into_vote_log
+
+    return absorb_likes_into_vote_log(store, remote.get("likes"))
+
+def _priority_band(opp: Opportunity) -> int:
+    """0 = own-post asks, 1 = named-us asks, 2 = watch plugs, 3 = everything else."""
+    why = opp.why or []
+    if any("OWN POST" in w for w in why):
+        return 0
+    if any(NAMED_ASK_MARK in w for w in why):
+        return 1
+    if any(WATCH_PLUG_MARK in w for w in why):
+        return 2
+    return 3
 
 
 def _load_dotenv(path: Path) -> None:
@@ -231,18 +296,31 @@ def _pick(
     limit: int,
     min_score: float,
     own_only: bool = False,
+    watch_only: bool = False,
 ) -> List[Opportunity]:
+    ranked = sorted(opps, key=lambda o: (_priority_band(o), -o.score))
     out: List[Opportunity] = []
-    for opp in opps:
+    for opp in ranked:
         key = _target_key(opp)
         if key in spent:
             continue
-        on_own = any("OWN POST" in w for w in (opp.why or []))
+        band = _priority_band(opp)
+        on_own = band == 0
+        is_named = band == 1
+        is_watch = band == 2
         if own_only and not on_own:
             continue
-        if not on_own and opp.score < min_score:
+        if watch_only and not is_watch:
+            continue
+        if not on_own and not is_named and not is_watch and opp.score < min_score:
             continue
         if on_own and opp.score < 8:
+            continue
+        # Named-us asks: below own-post, still take thin-but-aimed invites
+        if is_named and opp.score < 10:
+            continue
+        # Watch plugs: lower floor — topic boost already applied in scan
+        if is_watch and opp.score < 12:
             continue
         out.append(opp)
         if len(out) >= limit:
@@ -260,9 +338,14 @@ def _spend_comment(
     own_handle: Optional[str],
     dry_run: bool,
     kind: str,
+    recent_own: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     composed = compose_comment(
-        auth, opp, voice_guide=voice, own_handle=own_handle
+        auth,
+        opp,
+        voice_guide=voice,
+        own_handle=own_handle,
+        recent_own=recent_own,
     )
     key = _target_key(opp)
     parent_id = composed.get("parent_id")
@@ -276,13 +359,19 @@ def _spend_comment(
         "thread_note": composed.get("note") or composed.get("reason") or "",
         "similar_to": composed.get("similar_to"),
     }
+    if composed.get("llm_error"):
+        entry["llm_error"] = composed["llm_error"]
     if composed.get("status") == "skipped":
         entry["status"] = "skipped"
         entry["reason"] = composed.get("reason")
         journal.reason(
             "comment",
-            summary="skipped {} comment on #{} (near-duplicate)".format(
-                kind, opp.post_id
+            summary="skipped {} comment on #{} ({})".format(
+                kind,
+                opp.post_id,
+                "stock-repeat"
+                if "recent comments" in (composed.get("reason") or "")
+                else "near-duplicate",
             ),
             reasoning=composed.get("reason") or "near-duplicate",
             body=body,
@@ -290,6 +379,7 @@ def _spend_comment(
             related={
                 "post_id": opp.post_id,
                 "similar_to": composed.get("similar_to"),
+                "llm_error": composed.get("llm_error"),
             },
         )
         # Still mark spent so we don't keep retrying the same twin every cycle
@@ -306,11 +396,16 @@ def _spend_comment(
         _mark_spent(store, key, also_post_id=opp.post_id)
         entry["status"] = "posted"
         entry["response"] = result
+        # Keep local anti-repeat fresh within the same cycle/flush
+        if recent_own is not None and body:
+            recent_own.insert(0, strip_auto_signoff(body))
         reasoning = "Scheduled {}. Score {}. {}".format(
             kind, opp.score, "; ".join(opp.why[:4])
         )
         if composed.get("note"):
             reasoning += " · " + composed["note"]
+        if composed.get("llm_error"):
+            reasoning += " · llm fallback: " + str(composed["llm_error"])
         journal.reason(
             "comment",
             summary="{} comment on #{}".format(kind, opp.post_id),
@@ -322,6 +417,8 @@ def _spend_comment(
                 "parent_id": parent_id,
                 "similar_to": composed.get("similar_to"),
                 "response": result,
+                "mentions": summarize_mentions(result),
+                "llm_error": composed.get("llm_error"),
             },
         )
     except ApiError as e:
@@ -442,12 +539,7 @@ def run_best_comment_reply(
         if o.target_type == "comment" and o.target_id is not None
         and _target_key(o) not in spent
     ]
-    comment_opps.sort(
-        key=lambda o: (
-            0 if any("OWN POST" in w for w in (o.why or [])) else 1,
-            -o.score,
-        )
-    )
+    comment_opps.sort(key=lambda o: (_priority_band(o), -o.score))
 
     journal.reason(
         "cycle",
@@ -493,6 +585,7 @@ def run_best_comment_reply(
         }
 
     voice = load_voice(store)
+    recent_own = fetch_recent_own_bodies(auth)
     # Try highest-confidence candidates until one posts (skip near-duplicates)
     actions: List[Dict[str, Any]] = []
     posted = None
@@ -507,6 +600,7 @@ def run_best_comment_reply(
             own_handle=identity.handle,
             dry_run=dry_run,
             kind="comment-reply",
+            recent_own=recent_own,
         )
         actions.append(entry)
         if entry.get("status") in ("posted", "dry_run"):
@@ -551,13 +645,15 @@ def run_cycle(
     store: Store,
     *,
     dry_run: bool = False,
-    max_comments: int = 3,
+    max_comments: int = 2,
     max_votes: int = 6,
     min_score: float = 22.0,
-    allow_post: bool = False,
     comments_only: bool = False,
 ) -> Dict[str, Any]:
-    """Every-few-hours pass: scan, spend a few comments + votes on worthy targets."""
+    """Every-few-hours pass: scan, spend a few comments + votes on worthy targets.
+
+    Posts are never spent here — operator triggers those with `f916 post`.
+    """
     if comments_only:
         return run_best_comment_reply(client, store, dry_run=dry_run)
 
@@ -567,14 +663,25 @@ def run_cycle(
     if not identity:
         raise RuntimeError("no identity — run f916 join first")
 
+    _sync_likes_from_watch(store)
+
     auth = client.with_secret(identity.secret)
     me = auth.me() or {}
     rem = _remaining(me)
     opps, vote_cands = run_scan(auth, store, journal=journal, return_votes=True)
     spent = _spent_set(store) | _spent_from_history(auth)
 
-    # Prefer own-thread asks first within the cycle budget
+    # Prefer own-thread asks, then named-us asks, then watch-window plugs, then other invites
     picks = _pick(opps, spent, limit=max_comments, min_score=0, own_only=True)
+    if len(picks) < max_comments:
+        watch_picks = _pick(
+            opps,
+            spent | {_target_key(p) for p in picks},
+            limit=max_comments - len(picks),
+            min_score=0,
+            watch_only=True,
+        )
+        picks.extend(watch_picks)
     if len(picks) < max_comments:
         extra = _pick(
             opps,
@@ -593,6 +700,7 @@ def run_cycle(
         picks = picks[: rem["comments"]]
 
     voice = load_voice(store)
+    recent_own = fetch_recent_own_bodies(auth)
     actions: List[Dict[str, Any]] = []
     journal.reason(
         "cycle",
@@ -620,6 +728,7 @@ def run_cycle(
                 own_handle=identity.handle,
                 dry_run=dry_run,
                 kind="cycle",
+                recent_own=recent_own,
             )
         )
 
@@ -635,9 +744,13 @@ def run_cycle(
         kind="cycle",
     )
 
-    post_action = None
-    if allow_post and rem["posts"] > 0 and not dry_run:
-        post_action = {"status": "skipped", "reason": "cycles are comments-only by default"}
+    flag_summary: Optional[Dict[str, Any]] = None
+    try:
+        from .flagpass import run_flag_pass
+
+        flag_summary = run_flag_pass(auth, store, dry_run=dry_run, max_flags=1)
+    except Exception as e:
+        flag_summary = {"error": str(e)}
 
     summary = {
         "kind": "cycle",
@@ -646,7 +759,11 @@ def run_cycle(
         "remaining_before": rem,
         "actions": actions,
         "votes": vote_actions,
-        "post": post_action,
+        "flags": flag_summary,
+        "post": {
+            "status": "skipped",
+            "reason": "posts are operator-triggered; cycles only spend comments + votes",
+        },
     }
     state = store.load_state()
     state["last_cycle"] = {
@@ -656,6 +773,9 @@ def run_cycle(
         "dry_run": dry_run,
     }
     store.save_state(state)
+    published = _maybe_publish_allowance(client, store, dry_run=dry_run)
+    if published is not None:
+        summary["public_allowance"] = published
     return summary
 
 
@@ -664,13 +784,48 @@ def run_flush(
     store: Store,
     *,
     dry_run: bool = False,
+    spend_post: bool = False,
+    force: bool = False,
 ) -> Dict[str, Any]:
-    """~10 minutes before UTC reset: spend remaining posts + comments."""
+    """Last UTC hour before reset: spend remaining comments + votes.
+
+    Refuses to spend outside ``FLUSH_UTC_HOUR`` (unless ``force=True``) so a
+    late flush after midnight cannot burn the new day's budget.
+
+    By default the daily post is left alone — pass ``spend_post=True`` (CLI:
+    ``f916 flush --post``) to draft and spend it when one remains.
+    """
     _load_dotenv(store.root / "env")
     journal = Journal(store.root)
     identity = store.load()
     if not identity:
         raise RuntimeError("no identity — run f916 join first")
+
+    now = datetime.now(timezone.utc)
+    window_ok, window_reason = flush_window_ok(now)
+    if not window_ok and not force:
+        journal.reason(
+            "flush",
+            summary=window_reason,
+            reasoning=(
+                "Scheduled flush landed outside the pre-reset UTC hour. "
+                "Spending now would draw from the new day's allowance."
+            ),
+            status="skipped",
+            related={"at": now.isoformat(), "force": force},
+        )
+        return {
+            "kind": "flush",
+            "at": now.isoformat(),
+            "dry_run": dry_run,
+            "status": "skipped",
+            "reason": window_reason,
+            "actions": [],
+            "votes": [],
+            "post": {"status": "skipped", "reason": window_reason},
+        }
+
+    _sync_likes_from_watch(store)
 
     auth = client.with_secret(identity.secret)
     me = auth.me() or {}
@@ -678,13 +833,20 @@ def run_flush(
     opps, vote_cands = run_scan(auth, store, journal=journal, return_votes=True)
     spent = _spent_set(store) | _spent_from_history(auth)
     voice = load_voice(store)
+    recent_own = fetch_recent_own_bodies(auth)
 
     journal.reason(
         "flush",
-        summary="UTC end-of-day flush (dry_run={})".format(dry_run),
-        reasoning="{}\n\nBurning remaining allowance: {}".format(voice_reminder(), rem),
+        summary="UTC end-of-day flush (dry_run={}, spend_post={}, force={})".format(
+            dry_run, spend_post, force
+        ),
+        reasoning="{}\n\nBurning remaining comments + votes{}; posts_remaining={}".format(
+            voice_reminder(),
+            " + daily post" if spend_post else " (post left for operator unless --post)",
+            rem.get("posts"),
+        ),
         status="started",
-        related=rem,
+        related={**rem, "window_ok": window_ok, "forced": bool(force and not window_ok)},
     )
 
     actions: List[Dict[str, Any]] = []
@@ -695,13 +857,8 @@ def run_flush(
         min_score=8.0,
         own_only=False,
     )
-    # Own asks first already in opps order; re-stable: own first
-    picks.sort(
-        key=lambda o: (
-            0 if any("OWN POST" in w for w in (o.why or [])) else 1,
-            -o.score,
-        )
-    )
+    # Own asks → watch plugs → other invites
+    picks.sort(key=lambda o: (_priority_band(o), -o.score))
     picks = picks[: rem["comments"]]
 
     for opp in picks:
@@ -715,6 +872,7 @@ def run_flush(
                 own_handle=identity.handle,
                 dry_run=dry_run,
                 kind="flush",
+                recent_own=recent_own,
             )
         )
 
@@ -730,27 +888,85 @@ def run_flush(
         kind="flush",
     )
 
-    post_result = None
-    posted_n = sum(1 for a in actions if a.get("status") in ("posted", "dry_run"))
-    if rem["posts"] > 0:
-        draft = draft_flush_post(comments_spent=posted_n)
-        if dry_run:
-            post_result = {"status": "dry_run", **draft}
-        else:
+    comments_spent = sum(1 for a in actions if a.get("status") == "posted")
+    post_result: Dict[str, Any] = {
+        "status": "skipped",
+        "reason": "posts are operator-triggered; pass --post to spend remaining",
+        "posts_remaining": rem["posts"],
+    }
+    if spend_post and rem.get("posts", 0) > 0:
+        from .draft import draft_flush_post
+
+        draft = draft_flush_post(
+            comments_spent=comments_spent,
+            notes="flush --post · voice reminder applied in compose",
+        )
+        title = (draft.get("title") or "").strip()
+        body = draft.get("body") or ""
+        post_result = {
+            "status": "dry_run" if dry_run else "submitting",
+            "title": title,
+            "body": body,
+            "posts_remaining": rem["posts"],
+        }
+        journal.reason(
+            "flush-post",
+            summary=title,
+            reasoning=voice_reminder(),
+            title=title,
+            body=body,
+            status="dry_run" if dry_run else "submitting",
+        )
+        if not dry_run:
             try:
-                result = auth.post(draft["title"], body=draft["body"])
-                post_result = {"status": "posted", "response": result, **draft}
+                result = auth.post(title, body=body)
+                post_id = None
+                if isinstance(result, dict):
+                    if isinstance(result.get("post"), dict):
+                        post_id = result["post"].get("id")
+                    post_id = post_id or result.get("post_id") or result.get("id")
+                post_result["status"] = "posted"
+                post_result["post_id"] = post_id
+                post_result["response"] = result
                 journal.reason(
-                    "post",
-                    summary=draft["title"],
-                    reasoning="End-of-day flush — spend remaining daily post.",
-                    title=draft["title"],
-                    body=draft["body"],
+                    "flush-post",
+                    summary=title,
+                    reasoning=voice_reminder(),
+                    title=title,
+                    body=body,
                     status="posted",
-                    related={"response": result},
+                    related={
+                        "post_id": post_id,
+                        "mentions": summarize_mentions(result),
+                        "response": result,
+                    },
                 )
             except ApiError as e:
-                post_result = {"status": "failed", "error": str(e), **draft}
+                post_result["status"] = "failed"
+                post_result["error"] = str(e)
+                journal.reason(
+                    "flush-post",
+                    summary="FAILED: {}".format(title),
+                    reasoning=str(e),
+                    title=title,
+                    body=body,
+                    status="failed",
+                )
+    elif spend_post:
+        post_result = {
+            "status": "skipped",
+            "reason": "no posts remaining today",
+            "posts_remaining": rem["posts"],
+        }
+
+    # Opportunistic scam flag pass (cheap; skips if nothing matches).
+    flag_summary: Optional[Dict[str, Any]] = None
+    try:
+        from .flagpass import run_flag_pass
+
+        flag_summary = run_flag_pass(auth, store, dry_run=dry_run, max_flags=2)
+    except Exception as e:
+        flag_summary = {"error": str(e)}
 
     summary = {
         "kind": "flush",
@@ -760,14 +976,18 @@ def run_flush(
         "actions": actions,
         "votes": vote_actions,
         "post": post_result,
+        "flags": flag_summary,
     }
     state = store.load_state()
     state["last_flush"] = {
         "at": summary["at"],
-        "comments": sum(1 for a in actions if a.get("status") == "posted"),
+        "comments": comments_spent,
         "voted": sum(1 for a in vote_actions if a.get("status") == "voted"),
-        "post": (post_result or {}).get("status"),
+        "post": post_result.get("status"),
         "dry_run": dry_run,
     }
     store.save_state(state)
+    published = _maybe_publish_allowance(client, store, dry_run=dry_run)
+    if published is not None:
+        summary["public_allowance"] = published
     return summary

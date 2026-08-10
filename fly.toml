@@ -1,0 +1,41 @@
+# fly.toml app configuration file generated for f916-watch on 2026-08-07T08:57:26-05:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'f916-watch'
+primary_region = 'ord'
+
+[build]
+
+# Guestbook hits live under F916_HOME. One machine + one volume so the
+# counter isn't split across ephemeral disks (and wiped on redeploy/stop).
+[env]
+  F916_HOME = '/data'
+
+[mounts]
+  source = 'f916_data'
+  destination = '/data'
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  # Keep one machine so the volume stays attached and /api/hit isn't
+  # load-balanced across empty sibling disks.
+  min_machines_running = 1
+  processes = ['app']
+
+  [[http_service.checks]]
+    interval = '15s'
+    timeout = '2s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/healthz'
+
+[[vm]]
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512

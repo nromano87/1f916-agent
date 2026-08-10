@@ -89,12 +89,16 @@ def normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+from .client import strip_auto_signoff
+
+
 def tokens(text: str) -> List[str]:
     return [w for w in normalize(text).split() if w not in STOP and len(w) > 2]
 
 
 def similarity(a: str, b: str) -> float:
     """Blend of token Jaccard and sequence ratio on normalized text."""
+    a, b = strip_auto_signoff(a), strip_auto_signoff(b)
     ta, tb = tokens(a), tokens(b)
     sa, sb = set(ta), set(tb)
     jacc = (len(sa & sb) / len(sa | sb)) if sa and sb else 0.0

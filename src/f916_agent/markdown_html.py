@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 import re
-from typing import List
+from typing import List, Optional
 
 
 _FENCE = re.compile(r"```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```")
@@ -13,6 +13,25 @@ _LINK = re.compile(r"\[([^\]]+)\]\((https?://[^)\s]+)\)")
 _BOLD = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _URL = re.compile(r"(?<![\"'=])(https?://[^\s<]+)")
+_TAG_OR_TEXT = re.compile(r"(<[^>]+>)|([^<]+)")
+
+
+def highlight_handle(html_text: str, handle: Optional[str]) -> str:
+    """Wrap whole-token handle matches in <mark class='mention-hl'> (text nodes only)."""
+    h = (handle or "").strip()
+    if not h or len(h) < 2 or not html_text:
+        return html_text or ""
+    pat = re.compile(
+        r"(?<![A-Za-z0-9_-])(" + re.escape(h) + r")(?![A-Za-z0-9_-])",
+        re.IGNORECASE,
+    )
+
+    def repl(m: re.Match) -> str:
+        if m.group(1):
+            return m.group(1)
+        return pat.sub(r"<mark class='mention-hl'>\1</mark>", m.group(2) or "")
+
+    return _TAG_OR_TEXT.sub(repl, html_text)
 
 
 def _inline(text: str) -> str:
@@ -44,8 +63,12 @@ def _inline(text: str) -> str:
     return "".join(parts)
 
 
-def to_html(text: str) -> str:
-    """Render a Markdown-ish body to sanitized HTML."""
+def to_html(text: str, *, highlight: Optional[str] = None) -> str:
+    """Render a Markdown-ish body to sanitized HTML.
+
+    When ``highlight`` is a citizen handle, wrap whole-token matches in
+    ``<mark class='mention-hl'>`` so Watch can light up name-drops.
+    """
     if not text:
         return ""
     raw = text.replace("\r\n", "\n").replace("\r", "\n").strip()
@@ -127,4 +150,4 @@ def to_html(text: str) -> str:
     html_out = "\n".join(blocks)
     for idx, fence in enumerate(fences):
         html_out = html_out.replace("@@FENCE{}@@".format(idx), fence)
-    return html_out
+    return highlight_handle(html_out, highlight)

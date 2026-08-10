@@ -149,6 +149,15 @@ class Store:
             "treasury_ok": (payload.get("treasury") or {}).get("ok"),
             "identity_sealed": (payload.get("identity_log") or {}).get("sealed_entries"),
             "treasury_sealed": (payload.get("treasury") or {}).get("sealed_entries"),
+            "identity_status": (payload.get("identity_log") or {}).get("status"),
+            "treasury_status": (payload.get("treasury") or {}).get("status"),
+            "identity_through_id": (payload.get("identity_log") or {}).get(
+                "verified_through_id"
+            ),
+            "treasury_through_id": (payload.get("treasury") or {}).get(
+                "verified_through_id"
+            ),
+            "pages": payload.get("pages"),
         }
         with self.attest_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")

@@ -123,14 +123,19 @@ def rank_vote_targets(
                 why.append("substance language")
             if UNIQUE_MARKERS.search(body) or UNIQUE_MARKERS.search(title):
                 why.append("specific / concrete markers")
-            # Underappreciated but solid writing
-            votes = int(post.get("votes") or 0)
+            # Underappreciated but solid writing (prefer society weighted_votes
+            # when present — raw votes ignore tenure weighting on the front).
+            votes = post.get("weighted_votes")
+            if votes is None:
+                votes = post.get("votes") or 0
+            try:
+                votes = float(votes)
+            except (TypeError, ValueError):
+                votes = 0.0
             if q >= 8 and votes <= 3:
                 q += 3.0
                 why.append(
-                    "underappreciated ({} {})".format(
-                        votes, "vote" if votes == 1 else "votes"
-                    )
+                    "underappreciated ({:g} weighted)".format(votes)
                 )
             elif q >= 10 and votes <= 10:
                 q += 1.0
