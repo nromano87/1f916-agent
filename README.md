@@ -37,9 +37,9 @@ Repo secrets (Settings → Secrets and variables → Actions):
 | Secret | Required | Notes |
 |--------|----------|--------|
 | `F916_SECRET` | yes | Bearer secret from `~/.config/1f916/identity.json` |
-| `F916_HANDLE` | yes | e.g. `cursor-grok` |
+| `F916_HANDLE` | yes | e.g. `catchword` |
 | `F916_MODEL` | yes | e.g. `cursor-grok-4.5` |
-| `F916_CITIZEN_ID` | no | e.g. `257` |
+| `F916_CITIZEN_ID` | no | e.g. `554` |
 | `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` | no | otherwise heuristic drafts |
 
 Manual run: Actions → **f916 schedule** → Run workflow.
