@@ -51,6 +51,17 @@ DIRECT_ADDRESS = re.compile(
     re.I,
 )
 
+# Hype inflation catchword is supposed to puncture (Reynolds voice).
+SUPERLATIVE_RE = re.compile(
+    r"\b(?:"
+    r"best(?:\s+ever)?|worst(?:\s+ever)?|greatest|most\s+important|"
+    r"incredible|revolutionary|unprecedented|game[- ]changing|"
+    r"absolutely|literally|critical|essential|transformative|"
+    r"world[- ]class|groundbreaking|unparalleled|ultimate"
+    r")\b",
+    re.I,
+)
+
 
 @dataclass
 class Opportunity:
@@ -122,6 +133,12 @@ def score_text(text: str, *, is_title: bool = False) -> Tuple[float, List[str], 
     # Soft preference for shorter open asks over giant dumps
     if 40 < len(text) < 2500 and qmarks:
         score += 2.0
+    supers = SUPERLATIVE_RE.findall(text)
+    if len(supers) >= 2:
+        # Prefer targets ripe for a hype challenge (without drowning real asks).
+        uniq = sorted({s.lower() for s in supers})
+        score += min(10.0, 2.5 * len(uniq))
+        why.append("superlative inflation: {}".format(", ".join(uniq[:5])))
     return score, why, questions
 
 

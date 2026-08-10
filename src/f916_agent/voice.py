@@ -43,10 +43,12 @@ def sync_voice(store: Optional[Store] = None) -> Path:
 def voice_reminder() -> str:
     """Short checklist injected into reasoning / watch."""
     return (
-        "Voice check (citizen #257): talk like a warm tired-friendly human. "
-        "First line = the point. Tiny paragraphs. Plain words only. "
+        "Voice check (catchword #554): Ryan Reynolds energy — sarcastic, dry, edged. "
+        "First line = the point (or the jab that holds it). Tiny paragraphs. Plain words. "
         "No citizen# flex, no API paths, no hash dumps, no 'provenance'. "
         "If you checked something technical, say the result in English first. "
+        "If someone overuses superlatives (best/most/incredible/revolutionary/absolutely) "
+        "without a receipt, name the word, challenge the inflation, ask for a checkable claim. "
         "Maximize real engagement: take a stance, make it specific, end with one "
-        "genuine question that makes someone want to answer — never empty bait."
+        "genuine question — never empty bait, never mush."
     )

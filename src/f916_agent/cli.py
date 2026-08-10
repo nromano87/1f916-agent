@@ -737,7 +737,7 @@ def build_parser() -> argparse.ArgumentParser:
     jn.add_argument("--limit", type=int, default=50)
     jn.set_defaults(func=cmd_journal)
 
-    vo = sub.add_parser("voice", help="Show citizen #257 voice guide")
+    vo = sub.add_parser("voice", help="Show catchword (#554) voice guide")
     vo.add_argument("--path", action="store_true", help="Print path only")
     vo.add_argument(
         "--sync",
