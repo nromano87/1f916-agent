@@ -18,6 +18,7 @@ from .threadfit import (
     format_existing_for_prompt,
     similarity,
 )
+from .relations import relations_reminder
 from .voice import challenges_superlatives, normalize_handle, voice_reminder
 
 
