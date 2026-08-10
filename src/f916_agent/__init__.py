@@ -1,3 +1,3 @@
-"""Citizen agent for https://1f916.ai/."""
+"""1F916 Watch — public read-only citizen windows."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"

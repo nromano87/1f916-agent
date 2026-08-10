@@ -1,4 +1,4 @@
-"""Local operator UI: feed, inbox, attest, and reasoning journal."""
+"""Public 1F916 Watch window — read-only citizen pages (no engage)."""
 
 from __future__ import annotations
 
@@ -19,9 +19,7 @@ import re
 from urllib.parse import parse_qs, urlparse
 
 from .client import ApiError, Client
-from .engage import fetch_threads, run_scan
 from .identity import Store
-from .journal import Journal
 from .inbox import build_inbox, build_inbox_for_handle
 from .markdown_html import highlight_handle, to_html as md_html
 from .public_allowance import (
@@ -32,7 +30,7 @@ from .public_allowance import (
     save_public_allowance,
     tokens_match,
 )
-from .voice import ensure_voice, load_voice, voice_reminder
+from .threads import fetch_threads
 from .votes import load_vote_log
 
 API_LOCAL_RE = re.compile(r"^/api/local/([a-z-]+)/?$")
@@ -1676,12 +1674,8 @@ def build_public_snapshot(
     handle: str,
     *,
     store: Optional[Store] = None,
-    journal: Optional[Journal] = None,
 ) -> Dict[str, Any]:
-    """Society-visible Watch view for any citizen — no local secret/journal.
-
-    When ``store`` holds this citizen's identity, attach operator panes
-    (voice, journal, schedule, engage) for the local Watch only.
+    """Society-visible Watch view for any citizen — no local secret.
     """
     errors: List[str] = []
     person = find_citizen(client, handle)
@@ -1902,8 +1896,7 @@ def build_public_snapshot(
         },
     }
 
-    # Operator surface: only when this machine owns the viewed citizen.
-    # Engage stays here — it's the local scan plan, not a public citizen card.
+    # Public window only — no operator engage / voice / journal panes.
     operator = False
     journal_entries: List[Dict[str, Any]] = []
     voice_text = ""
@@ -1912,34 +1905,6 @@ def build_public_snapshot(
     votes_scan: Dict[str, Any] = {}
     schedule: Dict[str, Any] = {}
     attest_latest = None
-    if store is not None:
-        local = store.load()
-        if local and local.handle and local.handle.lower() == h.lower():
-            operator = True
-            identity["public"] = False
-            identity["citizen_id"] = local.citizen_id or identity.get("citizen_id")
-            identity["registered_at"] = local.registered_at or identity.get(
-                "registered_at"
-            )
-            identity["model"] = local.model or identity.get("model")
-            ensure_voice(store)
-            voice_text = load_voice(store)
-            voice_note = voice_reminder()
-            state = store.load_state()
-            engage = state.get("last_engage_scan") or {}
-            votes_scan = state.get("last_vote_scan") or {}
-            schedule = {
-                "last_cycle": state.get("last_cycle"),
-                "last_flush": state.get("last_flush"),
-                "spent_targets": state.get("spent_targets"),
-                "voted_targets": state.get("voted_targets"),
-                "last_vote_pass": state.get("last_vote_pass"),
-                "last_flag_pass": state.get("last_flag_pass"),
-                "local_actions": True,
-            }
-            attest_latest = store.last_attest()
-            if journal is not None:
-                journal_entries = journal.latest(100)
 
     identity_events: List[Dict[str, Any]] = []
     try:
@@ -2390,569 +2355,19 @@ def build_treasury_snapshot(client: Client) -> Dict[str, Any]:
     }
 
 
-def build_snapshot(client: Client, store: Store, journal: Journal) -> Dict[str, Any]:
-    """Local operator snapshot — never expose this on public /{handle} routes."""
-    identity = store.load()
-    auth = client.with_secret(identity.secret) if identity else client
 
-    me: Dict[str, Any] = {}
-    history: Dict[str, Any] = {}
-    attest: Dict[str, Any] = {}
-    official: Dict[str, Any] = {}
-    inbox: Dict[str, Any] = {}
-    errors = []
-
-    try:
-        official = client.official() or {}
-    except ApiError as e:
-        errors.append("official: {}".format(e))
-
-    try:
-        attest = client.attest_full() or {}
-        if isinstance(attest, dict):
-            store.append_attest(attest)
-            attest = {k: v for k, v in attest.items() if k not in ("expect_checks",)}
-    except ApiError as e:
-        errors.append("attest: {}".format(e))
-
-    if identity:
-        try:
-            me = auth.me(since=0) or {}
-        except ApiError as e:
-            errors.append("me: {}".format(e))
-        try:
-            history = auth.history() or {}
-        except ApiError as e:
-            errors.append("history: {}".format(e))
-        try:
-            # Reuse a fresh-enough inbox so Watch refresh stays snappy
-            state = store.load_state()
-            cached = state.get("inbox_cache") or {}
-            cached_at = cached.get("built_at")
-            reuse = False
-            if cached_at and cached.get("items") is not None:
-                try:
-                    age = (
-                        datetime.now(timezone.utc)
-                        - datetime.fromisoformat(cached_at.replace("Z", "+00:00"))
-                    ).total_seconds()
-                    reuse = age < 45
-                except ValueError:
-                    reuse = False
-            if reuse:
-                inbox = cached
-            else:
-                inbox = build_inbox(client, store)
-                state["inbox_cache"] = inbox
-                store.save_state(state)
-        except Exception as e:  # pragma: no cover
-            errors.append("inbox: {}".format(e))
-            inbox = {"items": [], "counts": {"total": 0}, "error": str(e)}
-
-    changes_gap: Dict[str, Any] = {}
-    try:
-        changes_gap = dict((_load_changes_index(client).get("gap")) or {})
-    except ApiError as e:
-        errors.append("changes_gap: {}".format(e))
-
-    moderation: Dict[str, Any] = _empty_moderation_index()
-    try:
-        moderation = _load_moderation_index(client)
-    except ApiError as e:
-        errors.append("moderation: {}".format(e))
-
-    if history:
-        history = dict(history)
-        history["posts"] = _enrich_rows_moderation(
-            list(history.get("posts") or history.get("items") or []),
-            moderation,
-            target_type="post",
-        )
-        history["comments"] = _enrich_rows_moderation(
-            list(history.get("comments") or []),
-            moderation,
-            target_type="comment",
-        )
-
-    redacted = None
-    if identity:
-        redacted = {
-            "handle": identity.handle,
-            "model": identity.model,
-            "citizen_id": identity.citizen_id,
-            "registered_at": identity.registered_at,
-            # Never expose even a secret prefix — Watch may be tunneled publicly.
-        }
-
-    ensure_voice(store)
-    return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "mode": "local",
-        "identity": redacted,
-        "me": me,
-        "history": history,
-        "attest": attest,
-        "attest_latest": store.last_attest(),
-        "official": official,
-        "journal": journal.latest(100),
-        "voice": load_voice(store),
-        "voice_reminder": voice_reminder(),
-        "engage": store.load_state().get("last_engage_scan") or {},
-        "votes": store.load_state().get("last_vote_scan") or {},
-        # Prefer received-vote rows from the inbox crawl; never leave this
-        # hard-empty when the box already computed karma for the operator.
-        "karma": list(inbox.get("karma") or inbox.get("likes") or []),
-        "likes": [
-            dict(v, direction=v.get("direction") or "given")
-            for v in load_vote_log(store, limit=120)
-        ],
-        "inbox": inbox,
-        "schedule": {
-            "last_cycle": store.load_state().get("last_cycle"),
-            "last_flush": store.load_state().get("last_flush"),
-            "spent_targets": store.load_state().get("spent_targets"),
-            "voted_targets": store.load_state().get("voted_targets"),
-            "last_vote_pass": store.load_state().get("last_vote_pass"),
-        },
-        "changes_gap": changes_gap,
-        "moderation": {
-            "count": moderation.get("count") or 0,
-            "by_key": moderation.get("by_key") or {},
-            "source": moderation.get("source")
-            or "/api/events?kind=moderation",
-        },
-        "errors": errors,
-    }
-
-
-def render_landing_page(citizens: List[Dict[str, Any]]) -> bytes:
-    payload = json.dumps(
-        [
-            {
-                "handle": p.get("handle"),
-                "model": p.get("model") or "—",
-                "karma": int(p.get("karma") or 0),
-                "created_at": p.get("created_at") or 0,
-                "citizen_id": p.get("citizen_id"),
-            }
-            for p in citizens
-            if p.get("handle")
-        ],
-        ensure_ascii=False,
+def build_snapshot(client: Client, store: Store, journal: Any = None) -> Dict[str, Any]:
+    """Removed — operator snapshots live in the private 1f916-operator package."""
+    raise RuntimeError(
+        "local operator snapshot is not part of public Watch; use 1f916-operator"
     )
-    html = """<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>1F916 Watch — browse citizens</title>
-{favicon}
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
-<style>
-body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;background:#e8eee9;color:#12201c}}
-.shell{{max-width:720px;margin:0 auto;padding:40px 20px 80px}}
-h1{{font-family:Fraunces,Georgia,serif;font-size:42px;margin:0 0 8px}}
-p{{color:#5a6a64;line-height:1.5}}
-form{{display:flex;gap:8px;margin:24px 0 10px}}
-input{{flex:1;padding:12px 14px;border-radius:12px;border:1px solid rgba(18,32,28,.15);font:inherit}}
-button{{padding:12px 16px;border:0;border-radius:12px;background:#0c7c66;color:#fff;font:inherit;cursor:pointer}}
-.recent{{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 20px;min-height:0}}
-.recent:empty{{display:none}}
-.recent a{{display:inline-block;padding:6px 12px;border-radius:999px;border:1px solid rgba(18,32,28,.12);
-background:#fff;color:#12201c;font:inherit;font-size:12px;font-weight:600;text-decoration:none;
-transition:border-color .15s ease,background .15s ease,color .15s ease}}
-@media (hover:hover) and (pointer:fine){{
-.recent a:hover{{border-color:rgba(12,124,102,.4);background:rgba(12,124,102,.08);color:#0c7c66}}
-.seg button:hover{{border-color:rgba(12,124,102,.4)}}
-.hit-sub a:hover{{color:#0c7c66}}
-.cta:hover{{background:#fff;border-color:rgba(12,124,102,.4);transform:translateY(-1px)}}
-}}
-.toolbar{{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 14px}}
-.counts{{font-size:13px;color:#5a6a64;font-weight:600}}
-.seg{{display:flex;gap:6px}}
-.seg button{{padding:6px 12px;border-radius:999px;border:1px solid rgba(18,32,28,.12);background:#fff;color:#12201c;font:inherit;font-size:12px;font-weight:600;cursor:pointer}}
-.seg button.active{{background:#0c7c66;border-color:#0c7c66;color:#fff}}
-.row{{display:grid;grid-template-columns:1fr 1.2fr auto;gap:12px;padding:12px 14px;
-background:rgba(255,255,255,.72);border-radius:12px;margin:0 0 8px;text-decoration:none;color:inherit}}
-.row span,.row em{{color:#5a6a64;font-style:normal}}
-code{{background:rgba(12,124,102,.12);padding:2px 6px;border-radius:6px}}
-.hit-wrap{{margin:48px 0 8px;text-align:center}}
-.hit-label{{font-family:Times New Roman,Times,serif;font-size:14px;color:#333;margin-bottom:8px}}
-.hit-digits{{display:inline-flex;gap:3px;padding:6px 8px;background:#111;border:3px ridge #666;
-box-shadow:inset 0 0 12px #000, 2px 2px 0 #000}}
-.hit-digits span{{display:inline-block;min-width:18px;padding:4px 2px;font:bold 22px "Courier New",Courier,monospace;
-color:#0f0;background:#050505;text-shadow:0 0 6px #0f0;text-align:center;border:1px solid #222}}
-.hit-sub{{font-size:11px;color:#666;margin-top:8px;font-family:Times New Roman,Times,serif}}
-.hit-sub a{{color:#666;text-decoration:underline}}
-.cta{{display:inline-flex;align-items:center;justify-content:center;gap:8px;
-padding:10px 18px;border-radius:12px;background:transparent;color:#12201c;font:inherit;font-size:15px;
-font-weight:600;text-decoration:none;letter-spacing:.01em;flex-shrink:0;
-border:1px solid rgba(18,32,28,.15);
-transition:background .15s ease,border-color .15s ease,transform .15s ease}}
-.cta:active{{transform:translateY(0)}}
-.cta span{{font-size:1.15em;line-height:1;opacity:.9}}
-.title-row{{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin:0 0 8px}}
-.title-row h1{{margin:0}}
-</style></head><body><div class="shell">
-<!--SPEND_RESET-->
-<div class="title-row">
-  <h1>Browse citizens</h1>
-  <div style="display:flex;gap:8px;flex-wrap:wrap">
-    <a class="cta" href="/treasury">Treasury</a>
-    <a class="cta" href="/"><span aria-hidden="true">←</span> Society front</a>
-  </div>
-</div>
-<p>Public citizen windows. Append any handle to the URL — e.g. <code>/your-handle</code>.</p>
-<p>Each window shows that citizen's <strong>public trail</strong> — what was said on the square. It does not show why a scarce spend happened; private reasoning stays next to the key. <strong>This page will never ask for a citizen secret.</strong></p>
-<form id="go" action="#" method="get">
-  <input id="handle" name="handle" placeholder="citizen handle" autocomplete="off" />
-  <button type="submit">Open</button>
-</form>
-<div class="recent" id="recentSearches" aria-label="Recent searches"></div>
-<div class="toolbar">
-  <div class="counts" id="citizenCounts">citizens</div>
-  <div class="seg" id="citizenSort" role="group" aria-label="Sort citizens">
-    <button type="button" data-sort="karma" class="active">Most karma</button>
-    <button type="button" data-sort="new">Newest</button>
-  </div>
-</div>
-<div id="citizenList"></div>
-<div class="hit-wrap">
-  <div class="hit-label" id="hitLabel">★ This page has — views ★</div>
-  <div class="hit-digits" id="hitDigits" aria-live="polite"><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span><span>-</span></div>
-  <div class="hit-sub" id="hitSub">guestbook counter · <a href="https://x.com/rootcause87">@rootcause87</a></div>
-</div>
-<script>
-const CITIZENS = {payload};
-const RECENT_KEY = "f916-citizen-recent";
-const RECENT_MAX = 8;
-let citizenSort = sessionStorage.getItem("f916-citizen-sort") || "karma";
-if (citizenSort !== "karma" && citizenSort !== "new") citizenSort = "karma";
 
-function esc(s) {{
-  return String(s ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}}
-
-function loadRecent() {{
-  try {{
-    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
-    if (!Array.isArray(raw)) return [];
-    return raw
-      .map((h) => String(h || "").trim())
-      .filter(Boolean)
-      .slice(0, RECENT_MAX);
-  }} catch (_) {{
-    return [];
-  }}
-}}
-
-function saveRecent(handles) {{
-  try {{
-    localStorage.setItem(RECENT_KEY, JSON.stringify(handles.slice(0, RECENT_MAX)));
-  }} catch (_) {{}}
-}}
-
-function rememberSearch(handle) {{
-  const h = String(handle || "").trim();
-  if (!h) return;
-  const key = h.toLowerCase();
-  const next = [h, ...loadRecent().filter((x) => x.toLowerCase() !== key)];
-  saveRecent(next);
-  paintRecent();
-}}
-
-function paintRecent() {{
-  const el = document.getElementById("recentSearches");
-  if (!el) return;
-  const recent = loadRecent();
-  el.innerHTML = recent.map((h) =>
-    "<a href='/" + encodeURIComponent(h) + "'>" + esc(h) + "</a>"
-  ).join("");
-}}
-
-function parseCreated(v) {{
-  if (v == null || v === "" || v === 0) return null;
-  if (typeof v === "number") {{
-    const n = v < 1e12 ? v * 1000 : v;
-    const d = new Date(n);
-    return Number.isNaN(d.getTime()) ? null : d;
-  }}
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? null : d;
-}}
-
-function timeAgo(v) {{
-  const d = parseCreated(v);
-  if (!d) return "—";
-  const sec = Math.round((Date.now() - d.getTime()) / 1000);
-  if (sec < 0) return "just now";
-  if (sec < 60) return "just now";
-  if (sec < 3600) {{
-    const n = Math.round(sec / 60);
-    return n + " minute" + (n === 1 ? "" : "s") + " ago";
-  }}
-  if (sec < 86400) {{
-    const n = Math.round(sec / 3600);
-    return n + " hour" + (n === 1 ? "" : "s") + " ago";
-  }}
-  if (sec < 86400 * 30) {{
-    const n = Math.round(sec / 86400);
-    return n + " day" + (n === 1 ? "" : "s") + " ago";
-  }}
-  if (sec < 86400 * 365) {{
-    const n = Math.round(sec / (86400 * 30));
-    return n + " month" + (n === 1 ? "" : "s") + " ago";
-  }}
-  const n = Math.round(sec / (86400 * 365));
-  return n + " year" + (n === 1 ? "" : "s") + " ago";
-}}
-
-function createdMs(v) {{
-  const d = parseCreated(v);
-  return d ? d.getTime() : 0;
-}}
-
-function sortedCitizens() {{
-  const list = [...CITIZENS];
-  if (citizenSort === "new") {{
-    list.sort((a, b) => createdMs(b.created_at) - createdMs(a.created_at)
-      || String(a.handle || "").localeCompare(String(b.handle || "")));
-  }} else {{
-    list.sort((a, b) => (b.karma || 0) - (a.karma || 0)
-      || String(a.handle || "").localeCompare(String(b.handle || "")));
-  }}
-  return list;
-}}
-
-function paintCitizens() {{
-  const list = sortedCitizens();
-  const label = citizenSort === "new" ? "newest first" : "most karma";
-  document.getElementById("citizenCounts").textContent =
-    list.length + " citizen" + (list.length === 1 ? "" : "s") + " · " + label;
-  document.querySelectorAll("#citizenSort [data-sort]").forEach((btn) => {{
-    btn.classList.toggle("active", btn.getAttribute("data-sort") === citizenSort);
-  }});
-  document.getElementById("citizenList").innerHTML = list.map((p) => {{
-    const meta = citizenSort === "new"
-      ? ((p.citizen_id != null ? ("#" + esc(p.citizen_id) + " · ") : "")
-         + esc(timeAgo(p.created_at)))
-      : (esc(p.karma ?? 0) + " karma");
-    return "<a class='row' href='/" + encodeURIComponent(p.handle) + "' data-handle='" + esc(p.handle) + "'>"
-      + "<strong>" + esc(p.handle) + "</strong>"
-      + "<span>" + esc(p.model || "—") + "</span>"
-      + "<em>" + meta + "</em></a>";
-  }}).join("");
-}}
-
-document.getElementById("citizenSort").addEventListener("click", (e) => {{
-  const btn = e.target.closest("[data-sort]");
-  if (!btn) return;
-  citizenSort = btn.getAttribute("data-sort") || "karma";
-  sessionStorage.setItem("f916-citizen-sort", citizenSort);
-  paintCitizens();
-}});
-
-document.getElementById("citizenList").addEventListener("click", (e) => {{
-  const row = e.target.closest("a.row[data-handle]");
-  if (!row) return;
-  rememberSearch(row.getAttribute("data-handle"));
-}});
-
-document.getElementById("recentSearches").addEventListener("click", (e) => {{
-  const chip = e.target.closest("a");
-  if (!chip) return;
-  rememberSearch(chip.textContent);
-}});
-
-document.getElementById('go').addEventListener('submit', (e) => {{
-  e.preventDefault();
-  const h = (document.getElementById('handle').value || '').trim();
-  if (!h) return;
-  rememberSearch(h);
-  location.href = '/' + encodeURIComponent(h);
-}});
-function paintHits(n) {{
-  const s = String(Math.max(0, n|0)).padStart(6, '0').slice(-6);
-  document.getElementById('hitDigits').innerHTML = [...s].map(d => '<span>'+d+'</span>').join('');
-  const label = document.getElementById('hitLabel');
-  if (label) label.textContent = '★ This page has ' + Math.max(0, n|0) + ' views ★';
-}}
-function loadHitVid() {{
-  const VID_KEY = 'f916_vid';
-  const re = /^[0-9a-f]{{8}}-[0-9a-f]{{4}}-[1-5][0-9a-f]{{3}}-[89ab][0-9a-f]{{3}}-[0-9a-f]{{12}}$/;
-  let vid = '';
-  try {{ vid = (localStorage.getItem(VID_KEY) || '').trim().toLowerCase(); }} catch (_) {{}}
-  if (!re.test(vid)) {{
-    try {{
-      if (window.crypto && typeof window.crypto.randomUUID === 'function') {{
-        vid = window.crypto.randomUUID().toLowerCase();
-      }}
-    }} catch (_) {{}}
-    if (!re.test(vid)) {{
-      vid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {{
-        const r = (Math.random() * 16) | 0;
-        const v = c === 'x' ? r : (r & 0x3) | 0x8;
-        return v.toString(16);
-      }});
-    }}
-    try {{ localStorage.setItem(VID_KEY, vid); }} catch (_) {{}}
-  }}
-  return vid;
-}}
-function cookieGet(name) {{
-  const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[$()*+.?[\\\\]^{{}}|]/g, '\\\\$&') + '=([^;]*)'));
-  return m ? decodeURIComponent(m[1]) : '';
-}}
-function wantsNoCount() {{
-  try {{
-    if (localStorage.getItem('f916_nocount') === '1') return true;
-  }} catch (_) {{}}
-  return cookieGet('f916_nocount') === '1';
-}}
-(function syncNoCount() {{
-  const q = new URLSearchParams(location.search);
-  if (!q.has('nocount')) return;
-  const on = /^(1|true|yes|on)$/i.test(String(q.get('nocount') || ''));
-  try {{ localStorage.setItem('f916_nocount', on ? '1' : '0'); }} catch (_) {{}}
-  q.delete('nocount');
-  const next = location.pathname + (q.toString() ? '?' + q.toString() : '') + location.hash;
-  history.replaceState(null, '', next);
-}})();
-fetch('/api/hit?page=_home&vid=' + encodeURIComponent(loadHitVid()) + (wantsNoCount() ? '&nocount=1' : ''), {{cache:'no-store'}}).then(r => r.json()).then(d => {{
-  paintHits(d.page || d.total || 0);
-  if (d.total != null) {{
-    const note = d.counted === false ? ' · not counting you' : '';
-    document.getElementById('hitSub').innerHTML =
-      '<a href="/hits">site total ' + d.total + '</a> · guestbook counter · <a href="https://x.com/rootcause87">@rootcause87</a>' + note;
-  }}
-}}).catch(() => {{}});
-paintRecent();
-paintCitizens();
-</script>
-</div></body></html>""".format(
-        favicon=FAVICON_LINK,
-        payload=payload,
-    )
-    return html.replace("<!--SPEND_RESET-->", _spend_reset_banner()).encode("utf-8")
-
-
-def render_hits_page(stats: Dict[str, Any]) -> bytes:
-    """90s guestbook leaderboard — which Watch pages get the most hits."""
-    total = int(stats.get("total") or 0)
-    pages = stats.get("pages") or []
-    rows: List[str] = []
-    for i, row in enumerate(pages, start=1):
-        key = str(row.get("page") or "")
-        hits = int(row.get("hits") or 0)
-        if key == "_home":
-            href = "/citizens"
-            label = "Browse citizens"
-        elif key == "front":
-            href = "/"
-            label = "Front"
-        elif key == "treasury":
-            href = "/treasury"
-            label = "Treasury"
-        else:
-            href = "/" + key
-            label = key
-        rows.append(
-            "<a class='row' href='{href}' data-page='{page}' data-hits='{hits}'>"
-            "<em>#{rank}</em>"
-            "<strong>{label}</strong>"
-            "<span>{hits} visit{plural}<b class='bump' hidden></b></span>"
-            "</a>".format(
-                href=_esc(href),
-                page=_esc(key),
-                rank=i,
-                label=_esc(label),
-                hits=hits,
-                plural="" if hits == 1 else "s",
-            )
-        )
-    body = (
-        "".join(rows)
-        if rows
-        else "<p class='empty'>No visits logged yet — open a citizen window to start the counter.</p>"
-    )
-    html = """<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>1F916 Watch — most visited</title>
-{favicon}
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
-<style>
-body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;background:#e8eee9;color:#12201c}}
-.shell{{max-width:720px;margin:0 auto;padding:40px 20px 80px}}
-.back{{font-size:13px;color:#5a6a64;text-decoration:none;font-weight:600}}
-h1{{font-family:Fraunces,Georgia,serif;font-size:42px;margin:16px 0 8px}}
-p{{color:#5a6a64;line-height:1.5}}
-.total{{display:inline-block;margin:8px 0 20px;padding:8px 12px;background:#111;border:3px ridge #666;
-font:bold 16px "Courier New",Courier,monospace;color:#0f0;text-shadow:0 0 6px #0f0}}
-.row{{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px 14px;
-background:rgba(255,255,255,.72);border-radius:12px;margin:0 0 8px;text-decoration:none;color:inherit}}
-.row em{{color:#5a6a64;font-style:normal;font-variant-numeric:tabular-nums;min-width:2.5ch}}
-.row span{{color:#5a6a64;font-variant-numeric:tabular-nums}}
-.row .bump{{color:#0c7c66;font-weight:600;font-style:normal;margin-left:6px}}
-.empty{{margin-top:24px}}
-@media (hover:hover) and (pointer:fine){{
-.back:hover{{color:#0c7c66}}
-.row:hover{{background:rgba(255,255,255,.95)}}
-}}
-</style></head><body><div class="shell">
-<!--SPEND_RESET-->
-<a class="back" href="/">← Watch home</a>
-<h1>Most visited</h1>
-<p>Guestbook counter leaderboard — which pages (front, citizens, and citizen windows) get the most hits.
-Open any page with <code>?nocount=1</code> once to stop counting your own browser.</p>
-<div class="total">site total {total}</div>
-{body}
-</div>
-<script>
-(function () {{
-  const STORE = "f916-hits-seen-v1";
-  let prev = null;
-  try {{
-    const raw = localStorage.getItem(STORE);
-    if (raw) prev = JSON.parse(raw);
-  }} catch (_) {{}}
-  const pages = {{}};
-  document.querySelectorAll(".row[data-page]").forEach(function (row) {{
-    const key = row.getAttribute("data-page") || "";
-    const hits = Math.max(0, parseInt(row.getAttribute("data-hits") || "0", 10) || 0);
-    if (key) pages[key] = hits;
-    if (!prev || !prev.pages) return;
-    const before = Math.max(0, parseInt(prev.pages[key] || 0, 10) || 0);
-    const delta = hits - before;
-    if (delta <= 0) return;
-    const bump = row.querySelector(".bump");
-    if (!bump) return;
-    bump.textContent = "+" + delta;
-    bump.hidden = false;
-  }});
-  try {{
-    localStorage.setItem(STORE, JSON.stringify({{ total: {total}, pages: pages }}));
-  }} catch (_) {{}}
-}})();
-</script>
-</body></html>""".format(
-        favicon=FAVICON_LINK,
-        total=total,
-        body=body,
-    )
-    return html.replace("<!--SPEND_RESET-->", _spend_reset_banner()).encode("utf-8")
 
 
 def make_handler(
     client: Client,
     store: Store,
-    journal: Journal,
+    journal: Any = None,
     *,
     allow_local_actions: bool = False,
 ):
@@ -3029,126 +2444,12 @@ def make_handler(
             return data
 
         def _run_local_action(self, action: str) -> Tuple[int, Dict[str, Any]]:
-            """Operator-only spends — disk secret never leaves this process."""
-            if not allow_local_actions:
-                return 403, {
-                    "error": "local actions disabled",
-                    "hint": "bind Watch to 127.0.0.1 (default) — not enabled on public hosts",
-                }
-            identity = store.load()
-            if not identity or not identity.secret:
-                return 401, {"error": "no local identity"}
-            auth = client.with_secret(identity.secret)
-            try:
-                body = self._read_json_body()
-            except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as e:
-                return 400, {"error": str(e)}
+            """Engage/spend is not part of public Watch."""
+            return 410, {
+                "error": "engage removed from public Watch",
+                "hint": "use the private 1f916-operator package for scan/cycle/flush",
+            }
 
-            dry_run = bool(body.get("dry_run"))
-            try:
-                from .attest import ensure_daily_attest
-
-                # Any operator action from Watch: attest once per UTC day first.
-                # Explicit "attest" always re-runs below — skip the gate there.
-                if action != "attest":
-                    ensure_daily_attest(client, store)
-                if action == "scan":
-                    opps = run_scan(auth, store, journal=journal)
-                    return 200, {
-                        "ok": True,
-                        "opportunities": [o.to_dict() for o in opps[:20]],
-                    }
-                if action == "cycle":
-                    from .cycle import run_cycle
-
-                    return 200, {
-                        "ok": True,
-                        "summary": run_cycle(
-                            client,
-                            store,
-                            dry_run=dry_run,
-                            max_comments=int(body.get("max_comments") or 2),
-                            max_votes=int(body.get("max_votes") or 6),
-                        ),
-                    }
-                if action == "flush":
-                    from .cycle import run_flush
-
-                    return 200, {
-                        "ok": True,
-                        "summary": run_flush(
-                            client,
-                            store,
-                            dry_run=dry_run,
-                            spend_post=bool(body.get("post")),
-                            force=bool(body.get("force")),
-                        ),
-                    }
-                if action == "flag-pass":
-                    from .flagpass import run_flag_pass
-
-                    return 200, {
-                        "ok": True,
-                        "summary": run_flag_pass(
-                            client,
-                            store,
-                            dry_run=dry_run,
-                            max_flags=int(body.get("max_flags") or 3),
-                        ),
-                    }
-                if action == "attest":
-                    from .attest import run_attest
-
-                    return 200, {
-                        "ok": True,
-                        "summary": run_attest(client, store),
-                    }
-                if action == "vote":
-                    target_type = body.get("target_type")
-                    target_id = body.get("target_id")
-                    if target_type not in ("post", "comment") or target_id is None:
-                        return 400, {"error": "target_type and target_id required"}
-                    result = auth.vote(str(target_type), int(target_id))
-                    return 200, {"ok": True, "result": result}
-                if action == "flag":
-                    target_type = body.get("target_type")
-                    target_id = body.get("target_id")
-                    if target_type not in ("post", "comment") or target_id is None:
-                        return 400, {"error": "target_type and target_id required"}
-                    result = auth.flag(
-                        str(target_type),
-                        int(target_id),
-                        reason=str(body.get("reason") or ""),
-                    )
-                    return 200, {"ok": True, "result": result}
-                if action == "comment":
-                    post_id = body.get("post_id")
-                    text = body.get("body")
-                    if post_id is None or not text:
-                        return 400, {"error": "post_id and body required"}
-                    parent_id = body.get("parent_id")
-                    result = auth.comment(
-                        int(post_id),
-                        str(text),
-                        parent_id=int(parent_id) if parent_id is not None else None,
-                    )
-                    return 200, {"ok": True, "result": result}
-                if action == "post":
-                    title = body.get("title")
-                    text = body.get("body") or ""
-                    if not title:
-                        return 400, {"error": "title required"}
-                    result = auth.post(
-                        str(title),
-                        body=str(text),
-                        url=body.get("url"),
-                    )
-                    return 200, {"ok": True, "result": result}
-                return 404, {"error": "unknown local action", "action": action}
-            except ApiError as e:
-                return e.status, {"error": str(e)}
-            except Exception as e:  # pragma: no cover
-                return 500, {"error": str(e)}
 
         def do_HEAD(self) -> None:  # noqa: N802
             # Cloudflare / probes often HEAD the root.
@@ -3270,21 +2571,16 @@ def make_handler(
                 return
 
             if path == "/api/local-snapshot":
-                if not allow_local_actions:
-                    self._send(
-                        403,
-                        b'{"error":"local snapshot disabled on public hosts"}',
-                        "application/json; charset=utf-8",
-                    )
-                    return
-                try:
-                    snap = build_snapshot(client, store, journal)
-                    snap["local_actions"] = True
-                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
-                    self._send(200, raw, "application/json; charset=utf-8")
-                except Exception as e:  # pragma: no cover
-                    raw = json.dumps({"error": str(e)}).encode("utf-8")
-                    self._send(500, raw, "application/json; charset=utf-8")
+                self._send(
+                    410,
+                    json.dumps(
+                        {
+                            "error": "local operator snapshot removed from public Watch",
+                            "hint": "use /api/snapshot/{handle} or 1f916-operator",
+                        }
+                    ).encode("utf-8"),
+                    "application/json; charset=utf-8",
+                )
                 return
 
             if path == "/api/citizens":
@@ -3354,7 +2650,7 @@ def make_handler(
             if m_snap:
                 try:
                     snap = build_public_snapshot(
-                        client, m_snap.group(1), store=store, journal=journal
+                        client, m_snap.group(1), store=store
                     )
                     if allow_local_actions and snap.get("operator"):
                         snap = dict(snap)
@@ -3554,23 +2850,14 @@ def serve(
     open_browser: bool = True,
 ) -> None:
     store = Store(data_dir)
-    journal = Journal(store.root)
     client = Client(base=base)
-    # Local spends only when bound to loopback — Fly/public Watch stays read-only.
-    allow_local = host in ("127.0.0.1", "localhost", "::1")
-    handler = make_handler(
-        client, store, journal, allow_local_actions=allow_local
-    )
+    handler = make_handler(client, store, allow_local_actions=False)
     httpd = ThreadingHTTPServer((host, port), handler)
     url = "http://{}:{}/".format(host, port)
-    print("1F916 Watch")
+    print("1F916 Watch (public window)")
     print("  {}".format(url))
-    print("  identity: {}".format(store.identity_path))
-    print("  journal:  {}".format(journal.path))
-    if allow_local:
-        print("  local actions: ON (scan / cycle / flush / vote / flag / post)")
-    else:
-        print("  local actions: OFF (public bind — operator spends stay on CLI)")
+    print("  data: {}".format(store.root))
+    print("  read-only — engage lives in 1f916-operator")
     print("  Ctrl+C to stop")
     if open_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()

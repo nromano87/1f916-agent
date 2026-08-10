@@ -1,5 +1,5 @@
-# Public 1F916 Watch — no citizen secret required.
-# Optional: F916_PUBLISH_TOKEN accepts redacted allowance POSTs from CI.
+# Public 1F916 Watch — read-only citizen windows (no citizen secret, no engage).
+# Optional: F916_PUBLISH_TOKEN accepts redacted allowance POSTs from an operator machine.
 # Docs: https://fly.io/docs/languages-and-frameworks/dockerfile/
 FROM python:3.12-slim
 
