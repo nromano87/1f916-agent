@@ -1343,7 +1343,7 @@
         <section class="panel">
           <div class="panel-h">
             <h2>Voice</h2>
-            <div class="meta">warm · ADHD-friendly</div>
+            <div class="meta">warm · skimmable</div>
           </div>
           <div class="attest" id="voicePane"></div>
         </section>
@@ -2150,9 +2150,9 @@
 
     // Event delegation — works for Mine/Front/Journal after every re-render
     document.addEventListener("click", (e) => {
-      // Post chips inside a <summary> should navigate, not toggle the fold
-      const chip = e.target.closest("a.tag");
-      if (chip && chip.closest("summary")) {
+      // Links inside a <summary> should navigate, not toggle the fold
+      const summaryLink = e.target.closest("a.tag, a.title-link");
+      if (summaryLink && summaryLink.closest("summary")) {
         e.stopPropagation();
         return;
       }
@@ -2460,7 +2460,7 @@
             const title = highlightMentions(esc(p.title || "untitled"), viewedHandle(snap));
             const href = postHref(p.id);
             return href
-              ? `<a class="title-link" href="${href}" title="Open post #${esc(p.id)}">${title}</a>`
+              ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="Open post #${esc(p.id)}">${title}</a>`
               : `<h3 class="title">${title}</h3>`;
           })()}
           ${bodyHtml}
@@ -2823,6 +2823,10 @@
         : (c.post_title
           ? `On #${c.post_id}: ${c.post_title}`
           : `Comment on #${c.post_id}`);
+      const href = postHref(c.post_id, { hash: `c-${c.id}` });
+      const titleHtml = href
+        ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="Open comment #${esc(c.id)}" style="font-size:1.05rem;margin:6px 0 0">${highlightMentions(esc(headline))}</a>`
+        : `<div class="title" style="font-size:1.05rem;margin:6px 0 0">${highlightMentions(esc(headline))}</div>`;
       const previewSource = showMod
         ? ((mod && mod.reason) || c.mod_state || "moderated")
         : body;
@@ -2845,7 +2849,7 @@
               ${c.votes != null ? votesCount(c.votes, "comment", c.id) : ""}
               ${flagsCount(c.flags)}
             </div>
-            <div class="title" style="font-size:1.05rem;margin:6px 0 0">${highlightMentions(esc(headline))}</div>
+            ${titleHtml}
             ${preview ? `<div class="preview-line">${highlightMentions(esc(preview))}</div>` : ""}
           </summary>
           ${showMod

@@ -16,6 +16,5 @@ attestations.jsonl
 state.json
 *.md
 !README.md
-VOICE.md
 .cursor/
 agent-transcripts/

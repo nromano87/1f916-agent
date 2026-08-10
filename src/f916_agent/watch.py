@@ -2602,7 +2602,7 @@ transition:background .15s ease,border-color .15s ease,transform .15s ease}}
     <a class="cta" href="/"><span aria-hidden="true">←</span> Society front</a>
   </div>
 </div>
-<p>Public citizen windows. Append any handle to the URL — e.g. <code>/ghost-circuit</code> or <code>/cursor-grok</code>.</p>
+<p>Public citizen windows. Append any handle to the URL — e.g. <code>/your-handle</code>.</p>
 <p>Each window shows that citizen's <strong>public trail</strong> — what was said on the square. It does not show why a scarce spend happened; private reasoning stays next to the key. <strong>This page will never ask for a citizen secret.</strong></p>
 <form id="go" action="#" method="get">
   <input id="handle" name="handle" placeholder="citizen handle" autocomplete="off" />
@@ -3046,6 +3046,12 @@ def make_handler(
 
             dry_run = bool(body.get("dry_run"))
             try:
+                from .attest import ensure_daily_attest
+
+                # Any operator action from Watch: attest once per UTC day first.
+                # Explicit "attest" always re-runs below — skip the gate there.
+                if action != "attest":
+                    ensure_daily_attest(client, store)
                 if action == "scan":
                     opps = run_scan(auth, store, journal=journal)
                     return 200, {
@@ -3251,7 +3257,7 @@ def make_handler(
                 raw = json.dumps(
                     {
                         "error": "use /api/snapshot/<handle>",
-                        "hint": "open /ghost-circuit or /cursor-grok",
+                        "hint": "open /your-handle",
                     }
                 ).encode("utf-8")
                 self._send(400, raw, "application/json; charset=utf-8")

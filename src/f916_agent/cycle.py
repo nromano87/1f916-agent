@@ -15,10 +15,24 @@ from .journal import Journal
 from .public_allowance import fetch_public_allowance, publish_allowance
 from .voice import load_voice, voice_reminder
 from .votes import VoteCandidate, append_vote_log
+from .attest import ensure_daily_attest
 
 # Flush may only spend during the last UTC hour. A late tick after midnight
 # would burn the new day's allowance.
 FLUSH_UTC_HOUR = 23
+
+
+def _gate_daily_attest(client: Client, store: Store) -> Dict[str, Any]:
+    """Ensure today's attest ran before any engage/spend work."""
+    return ensure_daily_attest(client, store)
+
+
+def _attest_summary(daily_attest: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "skipped": bool(daily_attest.get("skipped")),
+        "reason": daily_attest.get("reason"),
+        "path": daily_attest.get("path"),
+    }
 
 
 def flush_window_ok(now: Optional[datetime] = None) -> Tuple[bool, str]:
@@ -450,6 +464,7 @@ def run_vote_pass(
     if not identity:
         raise RuntimeError("no identity — run f916 join first")
 
+    daily_attest = _gate_daily_attest(client, store)
     auth = client.with_secret(identity.secret)
     me = auth.me() or {}
     rem = _remaining(me)
@@ -492,6 +507,7 @@ def run_vote_pass(
         "candidates": len(vote_cands),
         "votes": vote_actions,
         "voted": sum(1 for a in vote_actions if a.get("status") == "voted"),
+        "daily_attest": _attest_summary(daily_attest),
         "status": "ok",
     }
     state = store.load_state()
@@ -517,6 +533,7 @@ def run_best_comment_reply(
     if not identity:
         raise RuntimeError("no identity — run f916 join first")
 
+    daily_attest = _gate_daily_attest(client, store)
     auth = client.with_secret(identity.secret)
     me = auth.me() or {}
     rem = _remaining(me)
@@ -528,6 +545,7 @@ def run_best_comment_reply(
             "status": "skipped",
             "reason": "no comments remaining today",
             "remaining_before": rem,
+            "daily_attest": _attest_summary(daily_attest),
             "actions": [],
         }
 
@@ -581,6 +599,7 @@ def run_best_comment_reply(
             "reason": "no comment-level opportunities found",
             "remaining_before": rem,
             "scanned_comment_targets": 0,
+            "daily_attest": _attest_summary(daily_attest),
             "actions": [],
         }
 
@@ -626,6 +645,7 @@ def run_best_comment_reply(
             "snippet": (chosen_opp.snippet or "")[:200],
         },
         "actions": actions,
+        "daily_attest": _attest_summary(daily_attest),
         "status": (posted or (actions[-1] if actions else {})).get("status"),
     }
     state = store.load_state()
@@ -663,6 +683,7 @@ def run_cycle(
     if not identity:
         raise RuntimeError("no identity — run f916 join first")
 
+    daily_attest = _gate_daily_attest(client, store)
     _sync_likes_from_watch(store)
 
     auth = client.with_secret(identity.secret)
@@ -760,6 +781,7 @@ def run_cycle(
         "actions": actions,
         "votes": vote_actions,
         "flags": flag_summary,
+        "daily_attest": _attest_summary(daily_attest),
         "post": {
             "status": "skipped",
             "reason": "posts are operator-triggered; cycles only spend comments + votes",
@@ -801,6 +823,7 @@ def run_flush(
     if not identity:
         raise RuntimeError("no identity — run f916 join first")
 
+    daily_attest = _gate_daily_attest(client, store)
     now = datetime.now(timezone.utc)
     window_ok, window_reason = flush_window_ok(now)
     if not window_ok and not force:
@@ -822,6 +845,7 @@ def run_flush(
             "reason": window_reason,
             "actions": [],
             "votes": [],
+            "daily_attest": _attest_summary(daily_attest),
             "post": {"status": "skipped", "reason": window_reason},
         }
 
@@ -900,6 +924,7 @@ def run_flush(
         draft = draft_flush_post(
             comments_spent=comments_spent,
             notes="flush --post · voice reminder applied in compose",
+            own_handle=identity.handle,
         )
         title = (draft.get("title") or "").strip()
         body = draft.get("body") or ""
@@ -977,6 +1002,7 @@ def run_flush(
         "votes": vote_actions,
         "post": post_result,
         "flags": flag_summary,
+        "daily_attest": _attest_summary(daily_attest),
     }
     state = store.load_state()
     state["last_flush"] = {

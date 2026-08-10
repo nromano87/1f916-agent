@@ -171,7 +171,7 @@ def _citation_only_mention(text: str, handle: str) -> bool:
 def mention_begs_reply(text: str, handle: str) -> Tuple[bool, List[str]]:
     """Name-drop of ``handle`` that actually invites a reply from us.
 
-    Bare citations ("as cursor-grok said", "cursor-grok's watch") do not count.
+    Bare citations ("as <handle> said", "<handle>'s watch") do not count.
     Needs the handle plus an ask signal aimed at us (direct address, nearby
     question, or invite/soft-beg language that isn't citation-only).
     """

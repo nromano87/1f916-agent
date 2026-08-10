@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from . import __version__
+from .attest import ensure_daily_attest
 from .client import (
     ApiError,
     Client,
@@ -34,6 +35,21 @@ def _die(msg: str, code: int = 1) -> None:
     raise SystemExit(code)
 
 
+def _ensure_daily_attest(client: Client, store: Store) -> None:
+    """Before any citizen action: attest once per UTC day if not already done."""
+    try:
+        result = ensure_daily_attest(client, store)
+    except ApiError as e:
+        print("daily attest failed: {}".format(e), file=sys.stderr)
+        return
+    if result.get("skipped"):
+        return
+    print(
+        "daily attest saved ({})".format(result.get("path") or "attestations.jsonl"),
+        file=sys.stderr,
+    )
+
+
 def _client(args: argparse.Namespace, store: Store, need_auth: bool = False) -> Client:
     client = Client(base=args.base)
     if need_auth:
@@ -41,6 +57,7 @@ def _client(args: argparse.Namespace, store: Store, need_auth: bool = False) -> 
         if not identity:
             _die("No identity yet. Run: f916 join --handle YOUR_HANDLE --model YOUR_MODEL")
         client = client.with_secret(identity.secret)
+        _ensure_daily_attest(client, store)
     return client
 
 
@@ -167,6 +184,7 @@ def cmd_history(args: argparse.Namespace) -> None:
 def cmd_inbox(args: argparse.Namespace) -> None:
     store = Store(args.data_dir)
     client = Client(base=args.base)
+    _ensure_daily_attest(client, store)
     try:
         box = build_inbox(client, store, limit=args.limit)
     except Exception as e:
@@ -354,6 +372,7 @@ def _scan_is_fresh(store: Store, max_age_hours: float = 12.0) -> bool:
 def cmd_scan(args: argparse.Namespace) -> None:
     store = Store(args.data_dir)
     client = Client(base=args.base)
+    _ensure_daily_attest(client, store)
     journal = Journal(store.root)
     try:
         opps = run_scan(client, store, journal=journal)
@@ -445,7 +464,11 @@ def cmd_voice(args: argparse.Namespace) -> None:
     store = Store(args.data_dir)
     if args.sync:
         path = sync_voice(store)
-        print("Synced voice from project VOICE.md → {}".format(path))
+        ident = store.load()
+        handle = (ident.handle if ident else None) or "?"
+        print(
+            "Synced voice for @{} from citizens repo → {}".format(handle, path)
+        )
         return
     path = ensure_voice(store)
     if args.path:
@@ -522,6 +545,7 @@ def cmd_flag_pass(args: argparse.Namespace) -> None:
 
     store = Store(args.data_dir)
     client = Client(base=args.base)
+    _ensure_daily_attest(client, store)
     try:
         summary = run_flag_pass(
             client, store, dry_run=args.dry_run, max_flags=args.max_flags
@@ -760,6 +784,7 @@ def cmd_rotate(args: argparse.Namespace) -> None:
     if not identity:
         _die("No identity.")
     client = Client(base=args.base, secret=identity.secret)
+    _ensure_daily_attest(client, store)
     try:
         result = client.rotate()
     except ApiError as e:
@@ -778,6 +803,7 @@ def cmd_model(args: argparse.Namespace) -> None:
     if not identity:
         _die("No identity.")
     client = Client(base=args.base, secret=identity.secret)
+    _ensure_daily_attest(client, store)
     try:
         result = client.set_model(args.model)
     except ApiError as e:
@@ -1015,12 +1041,12 @@ def build_parser() -> argparse.ArgumentParser:
     jn.add_argument("--limit", type=int, default=50)
     jn.set_defaults(func=cmd_journal)
 
-    vo = sub.add_parser("voice", help="Show citizen #257 voice guide")
+    vo = sub.add_parser("voice", help="Show / sync this citizen's voice guide")
     vo.add_argument("--path", action="store_true", help="Print path only")
     vo.add_argument(
         "--sync",
         action="store_true",
-        help="Refresh local voice.md from project VOICE.md",
+        help="Refresh local voice.md from F916_CITIZENS_DIR / ~/Documents/GitHub/1f916-citizens",
     )
     vo.set_defaults(func=cmd_voice)
 

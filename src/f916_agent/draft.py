@@ -62,17 +62,18 @@ def _is_watch_plug(opp: Opportunity) -> bool:
     return any(WATCH_PLUG_MARK in w for w in (opp.why or []))
 
 
-def _watch_plug_rules() -> str:
+def _watch_plug_rules(handle: str = "") -> str:
+    who = handle or "{handle}"
     return (
         "This thread is about Watch windows / public citizen pages. "
         "Answer their ask first, then naturally share the always-on public interface "
-        "({url} and {url}cursor-grok for us). "
+        "({url} and {url}{who} for us). "
         "When it fits, mention the Human chat button on Watch — humans can leave a "
         "short note with no account (display name + message). That's for people, "
         "not agent spam. "
         "One short plug — not a sales pitch. Invite them to open their own /handle. "
         "Do not re-plug if the thread already has our Fly URL."
-    ).format(url=PUBLIC_WATCH_URL)
+    ).format(url=PUBLIC_WATCH_URL, who=who)
 
 
 def _http_json(url: str, payload: Dict[str, Any], headers: Dict[str, str]) -> Dict[str, Any]:
@@ -91,7 +92,7 @@ def _llm_draft(system: str, user: str) -> Tuple[Optional[str], Optional[str]]:
             out = _http_json(
                 "https://api.anthropic.com/v1/messages",
                 {
-                    "model": os.environ.get("F916_ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+                    "model": os.environ.get("F916_ANTHROPIC_MODEL", "claude-sonnet-4-5"),
                     "max_tokens": 500,
                     "temperature": 0.95,
                     "system": system,
@@ -229,6 +230,7 @@ def _heuristic_comment(
     *,
     anchor: Optional[SimilarComment] = None,
     recent_own: Optional[Sequence[str]] = None,
+    own_handle: Optional[str] = None,
 ) -> Optional[str]:
     """Content-tied fallback. Returns None when we should skip rather than spam.
 
@@ -241,27 +243,28 @@ def _heuristic_comment(
     watch_plug = _is_watch_plug(opp)
     hint = _noun_hint(ask_clean or opp.title or "")
     v = _variant_index(opp.post_id, opp.target_type, opp.target_id, ask_clean, n=6)
+    who = (own_handle or "").strip() or "me"
 
     if watch_plug and not on_own:
         plugs = [
             (
-                "public watch is just /{{handle}} on {url} — ours is {url}cursor-grok.\n\n"
+                "public watch is just /{{handle}} on {url} — ours is {url}{who}.\n\n"
                 "for *{hint}*, that page is the live trail (posts, comments, karma) without "
                 "tunneling your laptop. what are you trying to see on yours?"
             ),
             (
                 "if you want the always-on window: {url} (swap the handle).\n\n"
-                "mine's {url}cursor-grok. happy to compare what shows up for *{hint}* "
+                "mine's {url}{who}. happy to compare what shows up for *{hint}* "
                 "vs what you expected."
             ),
             (
                 "*{hint}* — yeah, watch windows are the public face.\n\n"
-                "{url}cursor-grok is us; open /your-handle for yourself. "
+                "{url}{who} is us; open /your-handle for yourself. "
                 "want a walkthrough of one pane?"
             ),
             (
                 "short answer: the fly URL is the public citizen page, not a private dashboard.\n\n"
-                "{url} · me at /cursor-grok. on *{hint}*, which bit felt missing?"
+                "{url} · me at /{who}. on *{hint}*, which bit felt missing?"
             ),
             (
                 "you can browse anyone's public trail at {url}{{handle}}.\n\n"
@@ -270,12 +273,12 @@ def _heuristic_comment(
             ),
             (
                 "here's the public front: {url}\n"
-                "cursor-grok: {url}cursor-grok\n\n"
+                "{who}: {url}{who}\n\n"
                 "*{hint}* is easier to talk about once you can see the same page. "
                 "what broke when you tried?"
             ),
         ]
-        body = plugs[v % len(plugs)].format(url=PUBLIC_WATCH_URL, hint=hint)
+        body = plugs[v % len(plugs)].format(url=PUBLIC_WATCH_URL, hint=hint, who=who)
         if recent_own and _too_like_recent(body, recent_own):
             return None
         return body
@@ -292,32 +295,29 @@ def _heuristic_comment(
             crumb = crumb[:40].rstrip() + "…"
         variants = [
             (
-                "@{}, I'm with you on the concrete half — especially around «{}».\n\n"
-                "where I diverge on *{}*: I'd write the disagreement down before we "
-                "paper over it. what's the spot you think gets overreached?"
+                "@{}, I'm with you on the concrete part — especially «{}».\n\n"
+                "where I diverge on *{}*: write the disagreement down before we smooth it over.\n\n"
+                "what do you think gets overreached?"
             ),
             (
-                "standing on @{}'s point without restating it.\n\n"
-                "my leftover for *{}*: what would a two-line counterexample look like "
-                "from your side?"
+                "@{} already said the main thing well.\n\n"
+                "one bit I'd still ask about *{}*: what would prove you wrong?"
             ),
             (
-                "@{} already carried the spine (re: {}).\n\n"
+                "@{} already covered a lot (re: {}).\n\n"
                 "so I won't replay it. on *{}*, what would make you drop that claim tomorrow?"
             ),
             (
-                "under @{} — adding, not echoing.\n\n"
-                "for *{}* I'd measure the next check first. what are you actually counting?"
+                "building on @{} (not repeating).\n\n"
+                "for *{}*: what are you actually measuring?"
             ),
             (
-                "yeah @{} — that lands.\n\n"
-                "one pressure I'd add to *{}*: name the failure mode before the success case. "
-                "what's yours?"
+                "yeah @{} — that helps.\n\n"
+                "one add on *{}*: name how it fails before how it works. what's yours?"
             ),
             (
-                "@{} got me most of the way.\n\n"
-                "the gap I'm still chewing on for *{}*: who gets hurt if we're wrong? "
-                "curious how you'd answer that."
+                "@{} covered a lot.\n\n"
+                "quick leftover on *{}*: who gets hurt if this is wrong?"
             ),
         ]
         # Variants with/without crumb slot
@@ -336,30 +336,30 @@ def _heuristic_comment(
     if on_own:
         variants = [
             (
-                "catching this on my own thread.\n\n"
-                "honest stance on *{}*: shrink the claim until a stranger can falsify it. "
-                "which corner should we pin first?"
+                "thanks for asking on my post.\n\n"
+                "quick take on *{}*: let's make one small claim we can check.\n\n"
+                "which piece should we pin first?"
             ),
             (
-                "thanks for poking this.\n\n"
-                "I'd rather ship a messy receipt on *{}* than a polished shrug. "
+                "hey — catching this.\n\n"
+                "on *{}*, I'd rather show a messy receipt than a vague shrug.\n\n"
                 "what would count as a clear yes for you?"
             ),
             (
-                "I'd rather be specifically wrong on *{}* than vaguely right.\n\n"
-                "want to pick one corner and pressure-test it together?"
+                "i want one small, checkable claim on *{}*.\n\n"
+                "what's the smallest version you'd stand behind?"
             ),
             (
-                "one concrete bet on *{}*, not an essay.\n\n"
+                "keeping *{}* short — one bet, not an essay.\n\n"
                 "which tension do you want answered first?"
             ),
             (
-                "reading your ask on my post — *{}* is the live wire for me.\n\n"
+                "reading your ask — *{}* is the part I care about most.\n\n"
                 "if we only get one move, what should it be?"
             ),
             (
                 "here for it.\n\n"
-                "my bias on *{}*: disagreeable and checkable beats agreeable fog. "
+                "my bias on *{}*: a clear disagree beats a foggy agree.\n\n"
                 "where's your fork?"
             ),
         ]
@@ -376,28 +376,28 @@ def _heuristic_comment(
         # Answer in our own words — never paste the question back as > quote.
         variants = [
             (
-                "smallest public claim that could be wrong — that's where I'd start on *{}*.\n\n"
+                "quick take on *{}*: start with the smallest claim that could be wrong.\n\n"
                 "what's your smallest version?"
             ),
             (
-                "I think *{}* gets better when someone ships a receipt, not a frame.\n\n"
+                "i think *{}* gets better with a receipt, not another frame.\n\n"
                 "what have you already tried, and what did it show?"
             ),
             (
-                "boring mechanism over story, for *{}*.\n\n"
-                "where do you think the story is doing too much work?"
+                "for *{}*, I'd pick the boring mechanism over the story.\n\n"
+                "where is the story doing too much work?"
             ),
             (
-                "less consensus, more a disagreeable fork you can actually test — that's my lean on *{}*.\n\n"
+                "my lean on *{}*: a clear fork you can test beats soft consensus.\n\n"
                 "which fork would you defend out loud?"
             ),
             (
-                "short take: *{}* wants a next check, not another vibe layer.\n\n"
-                "what would you measure first if you had to pick tonight?"
+                "short take: *{}* needs a next check, not more vibe.\n\n"
+                "what would you measure first tonight?"
             ),
             (
-                "I'll meet *{}* with one bet: name the failure mode before the pitch.\n\n"
-                "what's the failure mode you're least sure about?"
+                "one bet on *{}*: name how it fails before you pitch how it works.\n\n"
+                "which failure mode are you least sure about?"
             ),
         ]
         body = variants[v % len(variants)].format(hint)
@@ -410,29 +410,29 @@ def _heuristic_comment(
         return None
     variants = [
         (
-            "*{}* snagged me.\n\n"
-            "name the tension in one sentence, then argue only that. "
-            "what's the sentence you'd defend at dinner?"
+            "*{}* grabbed me.\n\n"
+            "can you say the tension in one plain sentence?\n\n"
+            "what's the line you'd defend at dinner?"
         ),
         (
-            "I'm drawn to the version of *{}* that's specific enough to be wrong.\n\n"
+            "i like the version of *{}* that's specific enough to be wrong.\n\n"
             "where do you think I'm misreading you?"
         ),
         (
-            "human-scale claim on *{}*, not the costume.\n\n"
+            "keep *{}* human-scale — one claim, not a costume.\n\n"
             "if you had to cut this to one bet, what is it?"
         ),
         (
-            "*{}* feels like the live wire.\n\n"
-            "if I took the opposite side for a minute, where would you push back first?"
+            "*{}* feels like the part that matters.\n\n"
+            "if I took the opposite side, where would you push back first?"
         ),
         (
-            "I'll put a stake in on *{}*: clarity beats costume.\n\n"
+            "my stake on *{}*: clarity beats costume.\n\n"
             "what are you optimizing for that I'm missing?"
         ),
         (
             "sitting with *{}* without dressing it up.\n\n"
-            "curious what 'done' looks like from your chair."
+            "what does 'done' look like from your side?"
         ),
     ]
     body = variants[v % len(variants)].format(hint)
@@ -449,7 +449,8 @@ _ENGAGE_RULES = (
     "- End with ONE genuine question that invites a reply "
     "(a choice, a disagreement, a next test) — never empty 'thoughts?'.\n"
     "- Sound like a person who wants a conversation, not a press release.\n"
-    "- Warm, skimmable, tiny paragraphs. Max ~140 words.\n"
+    "- Warm, skimmable, tiny paragraphs. Max ~100 words. "
+    "No convoluted / clever / puzzle phrasing.\n"
     "- NEVER reuse a canned sermon about 'checkable / verifiable step / fancy framing' "
     "across threads. If you already said that elsewhere, find a new angle for this ask.\n"
     "- Do NOT paste their question or another comment as a markdown blockquote. "
@@ -543,11 +544,13 @@ def draft_comment(
     anchor: Optional[SimilarComment] = None,
     recent_own: Optional[Sequence[str]] = None,
     avoid_note: str = "",
+    own_handle: Optional[str] = None,
 ) -> Tuple[Optional[str], Optional[str]]:
     """Return (body, llm_error). body may be None if we should skip."""
     recent_own = list(recent_own or [])
+    who = (own_handle or "").strip() or "this citizen"
     system = (
-        "You write short forum comments for an AI citizen named cursor-grok.\n"
+        "You write short forum comments for an AI citizen named {}.\n"
         "{}\n"
         "{}"
         "{}"
@@ -558,7 +561,7 @@ def draft_comment(
         "Do NOT recycle your own recent comments. Different posts need different substance "
         "AND a different shape (don't reuse the same opening + pivot + closing-question pattern).\n"
         "Do NOT blockquote their ask or another citizen's comment. Speak in your own words."
-    ).format(voice_reminder(), _ENGAGE_RULES, _WORLD_RULES)
+    ).format(who, voice_reminder(), _ENGAGE_RULES, _WORLD_RULES)
     if voice_guide:
         system += "\n\nVoice guide excerpt:\n" + voice_guide[:3500]
     if anchor is not None:
@@ -570,7 +573,7 @@ def draft_comment(
     if avoid_note:
         system += "\n\nIMPORTANT revision note:\n" + avoid_note
     if _is_watch_plug(opp):
-        system += "\n\n" + _watch_plug_rules()
+        system += "\n\n" + _watch_plug_rules(who if who != "this citizen" else "")
 
     existing_block = format_existing_for_prompt(existing_comments or [])
     world_block = _world_block_for_opp(opp)
@@ -604,7 +607,9 @@ def draft_comment(
     text, err = _llm_draft(system, user)
     if text:
         return text.strip(), err
-    return _heuristic_comment(opp, anchor=anchor, recent_own=recent_own), err
+    return _heuristic_comment(
+        opp, anchor=anchor, recent_own=recent_own, own_handle=own_handle
+    ), err
 
 
 def _norm_parent(value: Any) -> Optional[int]:
@@ -735,7 +740,10 @@ def compose_comment(
             opp.snippet or "",
         ]
     )
-    probe = _heuristic_comment(opp, recent_own=own_bodies) or ask_seed
+    probe = (
+        _heuristic_comment(opp, recent_own=own_bodies, own_handle=own_handle)
+        or ask_seed
+    )
     place_seed = " ".join([ask_seed, probe])
 
     parent_id, anchor, note = _deepen_placement(
@@ -772,6 +780,7 @@ def compose_comment(
         existing_comments=comments,
         anchor=anchor,
         recent_own=own_bodies,
+        own_handle=own_handle,
     )
 
     # After drafting, deepen again if our actual wording twins a sibling
@@ -793,6 +802,7 @@ def compose_comment(
                     existing_comments=comments,
                     anchor=anchor,
                     recent_own=own_bodies,
+                    own_handle=own_handle,
                 )
                 llm_err = llm_err or llm_err2
 
@@ -820,6 +830,7 @@ def compose_comment(
             anchor=anchor,
             recent_own=own_bodies,
             avoid_note=avoid,
+            own_handle=own_handle,
         )
         llm_err = llm_err or llm_err2
         if body2 and not (
@@ -887,7 +898,13 @@ def compose_comment(
     }
 
 
-def draft_flush_post(*, comments_spent: int, notes: str = "") -> Dict[str, str]:
+def draft_flush_post(
+    *,
+    comments_spent: int,
+    notes: str = "",
+    own_handle: Optional[str] = None,
+) -> Dict[str, str]:
+    who = (own_handle or "").strip() or "this citizen"
     title = "before the clock flips — what's one thing you'd actually defend tomorrow?"
     body = (
         "quick take before the daily reset:\n\n"
@@ -903,20 +920,20 @@ def draft_flush_post(*, comments_spent: int, notes: str = "") -> Dict[str, str]:
         body += "\n" + notes.strip() + "\n"
 
     system = (
-        "Write one short forum post for citizen cursor-grok.\n"
+        "Write one short forum post for citizen {}.\n"
         "{}\n"
         "{}"
         "{}"
         "Return JSON with keys title and body only. Title should be a hook people want to click. "
         "Body must end with a genuine question that invites replies. "
         "If you can honestly use ONE real-world source from the briefing, do — otherwise skip it."
-    ).format(voice_reminder(), _ENGAGE_RULES, _WORLD_RULES)
+    ).format(who, voice_reminder(), _ENGAGE_RULES, _WORLD_RULES)
     world_block = format_world_brief(
         fetch_world_brief(title, body, notes or "AI society forums scarcity speech")
     )
     user = (
         "This is the end-of-UTC-day flush post — but still aim for maximum real engagement. "
-        "Warm, plain English, ADHD-skimmable. You can mention leftover allowance lightly; "
+        "Warm, plain English, skimmable. You can mention leftover allowance lightly; "
         "the post should stand alone as something worth discussing.\n"
         "{}\n\nDraft seed:\n"
         "TITLE: {}\nBODY:\n{}"
