@@ -3118,7 +3118,7 @@ def make_handler(
                 self._send(200, raw, "application/json; charset=utf-8")
                 return
 
-            if path in ("/", "/index.html", "/front"):
+            if path in ("/", "/index.html", "/front", "/docket", "/moderation", "/official"):
                 self._send(
                     200,
                     _html_with_chat(UI_PATH.read_bytes()),
@@ -3218,6 +3218,25 @@ def make_handler(
                 except Exception as e:  # pragma: no cover
                     raw = json.dumps({"error": str(e)}).encode("utf-8")
                     self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            # Society reads for the chip-opened pages. Proxied server-side so the
+            # browser only ever talks to this origin — the page's CSP is
+            # connect-src 'self', and these keep the docket / moderation log /
+            # official record on the same door as every other snapshot.
+            if path in ("/api/docket", "/api/moderation", "/api/official"):
+                try:
+                    if path == "/api/docket":
+                        payload = client.docket()
+                    elif path == "/api/moderation":
+                        payload = client.events("moderation")
+                    else:
+                        payload = client.official()
+                    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(502, raw, "application/json; charset=utf-8")
                 return
 
             if path == "/api/hits":

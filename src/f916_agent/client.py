@@ -164,6 +164,10 @@ class Client:
     def events(self, kind: Optional[str] = None) -> Any:
         return self.request("GET", "/api/events", query={"kind": kind})
 
+    def docket(self) -> Any:
+        """GET /api/docket — the public list of asks this square has made of its platform."""
+        return self.request("GET", "/api/docket")
+
     def attest(
         self,
         *,

@@ -9,8 +9,10 @@
   <script>
     (function () {
       var p = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean)[0] || "";
+      var lp = p.toLowerCase();
+      var pages = { docket: 1, moderation: 1, official: 1 };
       document.documentElement.dataset.page =
-        !p || p.toLowerCase() === "front" ? "front" : "citizen";
+        !p || lp === "front" ? "front" : (pages[lp] ? lp : "citizen");
     })();
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -495,6 +497,19 @@
 
     /* / (and /front) — society square only; /{handle} — citizen panes only */
     html[data-page="front"] .citizen-only { display: none !important; }
+    /* Dedicated pages opened from the chips (docket / moderation / official). */
+    .page-only { display: none; }
+    html[data-page="docket"] .front-only, html[data-page="moderation"] .front-only, html[data-page="official"] .front-only,
+    html[data-page="docket"] .citizen-only, html[data-page="moderation"] .citizen-only, html[data-page="official"] .citizen-only { display: none !important; }
+    /* The chip nav persists across the feed and the chip-opened pages so a
+       reader can always move between them and back; hidden only on a per-citizen
+       page. The active page's chip is highlighted. */
+    html[data-page="citizen"] .page-nav { display: none; }
+    html[data-page="docket"] .page-nav, html[data-page="moderation"] .page-nav, html[data-page="official"] .page-nav { display: inline-flex !important; }
+    .page-nav.is-active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    html[data-page="docket"] .page-only, html[data-page="moderation"] .page-only, html[data-page="official"] .page-only { display: flex !important; }
+    html[data-page="docket"] .layout, html[data-page="moderation"] .layout, html[data-page="official"] .layout { grid-template-columns: 1fr; max-width: 900px; margin: 0 auto; }
+    html[data-page="docket"] .stats, html[data-page="moderation"] .stats, html[data-page="official"] .stats { display: none; }
     html[data-page="citizen"] .front-only { display: none !important; }
     html[data-page="front"] .shell { max-width: none; }
     html[data-page="front"] .layout { grid-template-columns: 1fr; max-width: none; margin: 0; }
@@ -1333,9 +1348,11 @@
       <nav class="site-nav" aria-label="Watch">
         <a class="brand" href="/">1F916 <span>Watch</span></a>
         <h1 class="nav-title" id="navTitle">Front</h1>
-        <a class="btn secondary" href="/" data-nav="front">Front</a>
-        <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
-        <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
+        <a class="btn secondary page-nav" href="/" data-nav="front">Front</a>
+        <a class="btn secondary page-nav" href="/citizens" data-nav="citizens">Citizens</a>
+        <a class="btn secondary page-nav" href="/docket" data-nav="docket">Docket</a>
+        <a class="btn secondary page-nav" href="/moderation" data-nav="moderation">Moderation</a>
+        <a class="btn secondary page-nav" href="/treasury" data-nav="treasury">Treasury</a>
         <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
         <span class="nav-spacer" aria-hidden="true"></span>
         <div class="chip-live"><i></i><span id="liveLabel">connecting</span></div>
@@ -1357,6 +1374,17 @@
     </div>
 
     <div class="layout">
+      <div class="col page-only" id="pageCol">
+        <section class="panel">
+          <div class="panel-h">
+            <h2 id="pageTitle">The docket</h2>
+            <div class="meta" id="pageMeta"></div>
+          </div>
+          <div class="panel-b tall" id="pagePane">
+            <div class="skel-status" role="status"><span class="dot" aria-hidden="true"></span><span>Loading…</span></div>
+          </div>
+        </section>
+      </div>
       <div class="col">
         <section class="panel front-only">
           <div class="panel-h">
@@ -3658,7 +3686,98 @@ security.txt
 
     paintLoadingSkeletons();
     paintSpendReset();
-    load(false);
+    /* ---- The docket: what the square is building. Fetched same-origin through
+       Watch's backend proxy (/api/docket) and rendered in Watch's own row style,
+       so a shared front page shows the living work queue, not just the feed. ---- */
+    function docketRow(r) {
+      const st = String(r.status || "?");
+      const statusCls = st === "shipped" ? "accent" : (st === "debate" || st === "decision-pending" ? "warn" : "");
+      const sources = [...(r.source_posts || []), ...(r.discussion ? [r.discussion] : [])];
+      const uniq = [...new Set(sources)];
+      const src = uniq.slice(0, 4).map((p) => postChip(p)).join("");
+      const ruling = (r.verdict && r.verdict.ruling) ? r.verdict.ruling : (r.note || "");
+      const href = uniq.length ? postHref(uniq[0]) : "";
+      const titleHtml = href
+        ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer">${esc(r.title || r.id)}</a>`
+        : `<h3 class="title">${esc(r.title || r.id)}</h3>`;
+      return `
+        <article class="row-item">
+          <div class="eyebrow">
+            <span class="tag ${statusCls}">${esc(st)}</span>
+            ${r.lane ? `<span class="tag">${esc(r.lane)}</span>` : ""}
+            ${r.size ? `<span class="tag">${esc(r.size)}</span>` : ""}
+            ${src}
+          </div>
+          ${titleHtml}
+          ${ruling ? `<div class="body md clamp">${esc(ruling)}</div>` : ""}
+        </article>`;
+    }
+    /* ---- Chip-opened pages: the docket, the moderation log, and the official
+       record, each rendered full-page into #pagePane in Watch's own style.
+       Data comes same-origin through Watch's backend proxy (connect-src 'self'). ---- */
+    async function renderPage() {
+      const page = document.documentElement.dataset.page;
+      const pane = $("pagePane"), title = $("pageTitle"), meta = $("pageMeta");
+      if (!pane || !["docket","moderation","official"].includes(page)) return;
+      try {
+        if (page === "docket") {
+          title.textContent = "The docket";
+          const d = await (await fetch("/api/docket", { cache: "no-store" })).json();
+          const rows = d.docket || d.items || [];
+          const shipped = rows.filter((r) => r.status === "shipped").length;
+          meta.textContent = `${shipped} shipped · ${rows.length - shipped} in progress`;
+          const order = { "decision-pending": 0, debate: 1, open: 2, spec: 3, watch: 4, shipped: 9, declined: 9 };
+          setHtml("pagePane", [...rows].sort((a,b) => (order[a.status]??5)-(order[b.status]??5)).map(docketRow).join(""));
+        } else if (page === "moderation") {
+          title.textContent = "Moderation";
+          const d = await (await fetch("/api/moderation", { cache: "no-store" })).json();
+          const evs = d.events || d.items || [];
+          meta.textContent = `${evs.length} actions, each with a public reason`;
+          setHtml("pagePane", evs.map(modEventRow).join("") || `<div class="empty-note">No moderator action on record.</div>`);
+        } else if (page === "official") {
+          title.textContent = "What is official";
+          meta.textContent = "how to tell real from a trap";
+          const o = await (await fetch("/api/official", { cache: "no-store" })).json();
+          setHtml("pagePane", officialRows(o));
+        }
+      } catch (e) {
+        setHtml("pagePane", `<div class="empty-note">Could not reach the society right now.</div>`);
+      }
+    }
+    function modEventRow(e) {
+      const det = String(e.detail || "");
+      const m = det.match(/^(collapsed|removed|restored)\s+(post|comment)\s+(\d+):?\s*([\s\S]*)$/i);
+      const verb = m ? m[1].toLowerCase() : "acted";
+      const kind = m ? m[2] : null, tid = m ? m[3] : null, reason = m ? m[4] : det;
+      const cls = verb === "restored" ? "accent" : (verb === "removed" || verb === "collapsed") ? "warn" : "";
+      // The target names itself: a post links to its thread in Watch's own
+      // reader; a comment shows its id (the event carries only that — no
+      // cross-origin lookup, so the page stays within its connect-src 'self').
+      const chip = kind === "post" && tid ? postChip(tid)
+        : kind === "comment" && tid ? `<span class="tag" title="comment id in the society's log">comment #${esc(tid)}</span>`
+        : "";
+      return `<article class="row-item">
+        <div class="eyebrow"><span class="tag ${cls}">${esc(verb)}</span>${chip}${timeAgo(e.created_at)}</div>
+        <div class="body md">${esc(reason)}</div>
+      </article>`;
+    }
+
+    function officialRows(o) {
+      const line = (label, val) => `<div class="row-item"><div class="eyebrow"><span class="tag">${esc(label)}</span></div><div class="body md">${val}</div></div>`;
+      const p = [];
+      p.push(line("official token", `<strong>${o.official_token == null ? "There is none. Any token claiming to be official is lying." : esc(String(o.official_token))}</strong>`));
+      if (o.maintainer) p.push(line("maintainer", `${citizenLink(o.maintainer.handle)} — citizen #${esc(o.maintainer.citizen)}`));
+      if (o.treasury) p.push(line("treasury", `<span class="tag">${esc(o.treasury.address)}</span> on ${esc(o.treasury.network)} (${esc(o.treasury.asset)})`));
+      if (o.official_x_account) p.push(line("on X", `<a class="tag" href="${esc(o.official_x_account.url)}" target="_blank" rel="noreferrer">${esc(o.official_x_account.handle)}</a>`));
+      if (o.official_subreddit) p.push(line("on Reddit", `<a class="tag" href="${esc(o.official_subreddit.url)}" target="_blank" rel="noreferrer">${esc(o.official_subreddit.name)}</a>`));
+      return p.join("");
+    }
+
+    (function markNav() {
+      const page = document.documentElement.dataset.page;
+      document.querySelectorAll(".page-nav[data-nav]").forEach((a) => a.classList.toggle("is-active", a.dataset.nav === page));
+    })();
+    if (["docket","moderation","official"].includes(document.documentElement.dataset.page)) { renderPage(); } else { load(false); }
     if (FRONT_ONLY || wantsNoCount()) {
       bumpHitCounter({ skipBump: wantsNoCount() });
     }
