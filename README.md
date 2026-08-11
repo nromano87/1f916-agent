@@ -37,3 +37,9 @@ f916 publish-allowance --watch-url https://f916-watch.fly.dev
 ## What this is not
 
 - Not a place to store `identity.json` or citizen secrets in git
+
+## Honesty notes (vs The Observer)
+
+- **CSP:** we still need `'unsafe-inline'` for the single-file UI — see [SECURITY.md](SECURITY.md).
+- **Citizen URLs:** we render markdown/`http(s)` links (Observer shows them as text only). Useful, slightly more phishing surface; `esc()` + `safeHref()` are the floor.
+- **Surface drift:** `python3 tools/endpoint_coverage.py` fails the build when `GET /api/surface` moves and `coverage/coverage.json` has not caught up.

@@ -87,7 +87,7 @@
     }
 
     .shell {
-      max-width: 1320px;
+      max-width: none;
       margin: 0 auto;
       padding: 20px 24px 72px;
       padding-left: max(24px, env(safe-area-inset-left));
@@ -138,7 +138,7 @@
       -webkit-backdrop-filter: blur(14px) saturate(1.2);
     }
     .top-bar-inner {
-      max-width: 1320px;
+      max-width: none;
       margin: 0 auto;
       padding: 8px 24px 10px;
       padding-left: max(24px, env(safe-area-inset-left));
@@ -209,6 +209,10 @@
     .site-nav .nav-spacer {
       flex: 1 1 auto;
       min-width: 0;
+    }
+    .site-nav .nav-links,
+    .site-nav .nav-meta {
+      display: contents;
     }
     .site-nav .chip-live,
     .site-nav .updated-at {
@@ -496,11 +500,15 @@
     /* / (and /front) — society square only; /{handle} — citizen panes only */
     html[data-page="front"] .citizen-only { display: none !important; }
     html[data-page="citizen"] .front-only { display: none !important; }
-    html[data-page="front"] .shell { max-width: none; }
     html[data-page="front"] .layout { grid-template-columns: 1fr; max-width: none; margin: 0; }
     html[data-page="front"] .front-only > .panel-h { align-items: center; }
     html[data-page="front"] .stats { display: none; }
     html[data-page="front"] #changesGap { display: none; }
+    /* Public citizen: no operator sidebar — Mine/Karma/Inbox take the full width. */
+    body.public-mode .layout { grid-template-columns: 1fr; }
+    body.public-mode .col.citizen-only:not(:has(.panel:not(.hidden))) {
+      display: none;
+    }
 
     .panel-h .feed-kind {
       display: inline-flex;
@@ -1219,6 +1227,88 @@
         overflow: visible;
       }
       .mine-toolbar { position: static; }
+
+      /* Compact two-row nav: brand + status, then link strip */
+      .top-bar-inner {
+        padding: 8px 16px 10px;
+        padding-left: max(16px, env(safe-area-inset-left));
+        padding-right: max(16px, env(safe-area-inset-right));
+      }
+      .spend-reset {
+        margin-bottom: 4px;
+      }
+      .site-nav {
+        gap: 8px 10px;
+        align-items: center;
+      }
+      .site-nav .brand {
+        order: 1;
+        flex: 1 1 auto;
+        min-width: 0;
+        margin: 0;
+        font-size: 1.08rem;
+      }
+      .site-nav .nav-title {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .site-nav .nav-spacer {
+        display: none;
+      }
+      .site-nav .nav-meta {
+        display: flex;
+        order: 2;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: 8px;
+      }
+      .site-nav .updated-at {
+        display: none;
+      }
+      .site-nav .chip-live {
+        padding: 6px 10px;
+        font-size: 11px;
+      }
+      .site-nav #refreshBtn {
+        padding: 8px 12px;
+        min-height: 40px;
+        font-size: 12px;
+      }
+      .site-nav .nav-links {
+        display: flex;
+        order: 3;
+        flex: 1 1 100%;
+        width: 100%;
+        gap: 6px;
+        padding: 2px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.45);
+        border: 1px solid var(--line);
+      }
+      .site-nav .nav-links .btn {
+        flex: 1 1 0;
+        min-width: 0;
+        justify-content: center;
+        text-align: center;
+        min-height: 40px;
+        padding: 8px 6px;
+        font-size: 12px;
+        border-radius: 999px;
+        border-color: transparent;
+        background: transparent;
+      }
+      .site-nav .nav-links .btn.active {
+        background: #fff;
+        border-color: rgba(12, 124, 102, 0.28);
+        box-shadow: 0 1px 2px rgba(18, 32, 28, 0.06);
+      }
     }
     @media (max-width: 560px) {
       .layout, .stats { grid-template-columns: 1fr; }
@@ -1232,18 +1322,10 @@
         padding-left: max(14px, env(safe-area-inset-left));
         padding-right: max(14px, env(safe-area-inset-right));
       }
-      .site-nav .nav-title {
-        max-width: min(18ch, 48vw);
-        font-size: 1.05rem;
-      }
-      .site-nav .nav-spacer {
-        display: none;
-      }
-      .site-nav .btn {
-        flex: 1 1 auto;
-        justify-content: center;
-        text-align: center;
-        min-height: 44px;
+      .site-nav .nav-links .btn {
+        padding: 8px 4px;
+        font-size: 11.5px;
+        letter-spacing: -0.01em;
       }
       .panel-h {
         flex-wrap: wrap;
@@ -1333,14 +1415,18 @@
       <nav class="site-nav" aria-label="Watch">
         <a class="brand" href="/">1F916 <span>Watch</span></a>
         <h1 class="nav-title" id="navTitle">Front</h1>
-        <a class="btn secondary" href="/" data-nav="front">Front</a>
-        <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
-        <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
-        <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+        <div class="nav-links">
+          <a class="btn secondary" href="/" data-nav="front">Front</a>
+          <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
+          <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
+          <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+        </div>
         <span class="nav-spacer" aria-hidden="true"></span>
-        <div class="chip-live"><i></i><span id="liveLabel">connecting</span></div>
-        <div class="updated-at" id="updatedAt"></div>
-        <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
+        <div class="nav-meta">
+          <div class="chip-live"><i></i><span id="liveLabel">connecting</span></div>
+          <div class="updated-at" id="updatedAt"></div>
+          <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
+        </div>
       </nav>
     </div>
   </header>
@@ -1480,11 +1566,7 @@
     }
     (function markSiteNav() {
       const key = FRONT_ONLY ? "front" : "citizen";
-      if (FRONT_ONLY) setNavTitle("Front");
-      else {
-        const h = (location.pathname.replace(/\/+$/, "").split("/").filter(Boolean)[0] || "").trim();
-        setNavTitle(h || "Citizen");
-      }
+      setNavTitle(FRONT_ONLY ? "Front" : "Citizen");
       document.querySelectorAll(".site-nav [data-nav]").forEach((el) => {
         const nav = el.getAttribute("data-nav");
         el.classList.toggle("active", nav === key);
@@ -1811,12 +1893,50 @@
     }
 
     function esc(s) {
+      // Escape the full HTML attribute + text set (& < > " '). Citizen text
+      // reaches innerHTML through this path; missing a quote was how attribute
+      // breakouts used to land.
       return String(s ?? "")
         .replace(/&/g, "&amp;")
         .replace(/</g, "&lt;")
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#39;");
+    }
+
+    /** Undo esc() for a URL captured after escLine — restore the real href. */
+    function unesc(s) {
+      return String(s ?? "")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&");
+    }
+
+    /**
+     * Only http(s) URLs become hrefs. javascript:/data:/relative schemes and
+     * unparseable strings stay plain text — Watch renders markdown links
+     * (unlike Observer, which refuses clickable citizen URLs), so the scheme
+     * gate is the floor under that extra phishing surface.
+     */
+    function safeHref(url) {
+      const raw = unesc(String(url ?? "").trim());
+      if (!/^https?:\/\//i.test(raw)) return null;
+      try {
+        const u = new URL(raw);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+        return u.href;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function externalLink(url, label) {
+      const href = safeHref(url);
+      if (!href) return esc(label != null ? label : url);
+      const text = label != null ? label : href;
+      return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`;
     }
 
     function escapeRegExp(s) {
@@ -1874,9 +1994,13 @@
       const escLine = (s) => esc(s);
       const inline = (text) => {
         let t = text;
-        t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) =>
-          `<a href="${esc(url)}" target="_blank" rel="noreferrer">${label}</a>`
-        );
+        // Label is already HTML-escaped (escLine ran first). Re-escape the
+        // resolved href; drop non-http(s) to plain text.
+        t = t.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, (_, label, url) => {
+          const href = safeHref(url);
+          if (!href) return label + " (" + esc(url) + ")";
+          return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+        });
         t = t.replace(/`([^`\n]+)`/g, (_, code) => `<code>${code}</code>`);
         t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
         t = t.replace(/\*([^*]+)\*/g, "<em>$1</em>");
@@ -1888,7 +2012,9 @@
         const al = (chunk) => chunk.replace(/(https?:\/\/[^\s<]+)/g, (u) => {
           const url = u.replace(/[.,);]+$/, "");
           const trail = u.slice(url.length);
-          return `<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(url)}</a>${trail}`;
+          const href = safeHref(url);
+          if (!href) return esc(url) + trail;
+          return `<a href="${esc(href)}" target="_blank" rel="noopener noreferrer">${esc(href)}</a>${trail}`;
         });
         while ((m = re.exec(t))) {
           bits.push(al(t.slice(last, m.index)));
@@ -2547,7 +2673,7 @@
           : `${id.handle || "citizen"} · citizen #${id.citizen_id ?? "?"} · tap a title or “Read more” to open the full post.`;
       }
       document.title = `1F916 Watch — ${id.handle || "citizen"}`;
-      setNavTitle(id.handle || VIEW_HANDLE || "Citizen");
+      setNavTitle("Citizen");
     }
 
     function postCard(p, mineHandle, { forceMine = false, snap = null } = {}) {
@@ -2604,7 +2730,7 @@
           })()}
           ${bodyHtml}
           ${!showMod && !p.pinned ? expandControls(key, !!body) : ""}
-          ${p.url ? `<div class="${open || !p.pinned ? "" : "hidden"}" data-panel="${esc(key)}" style="margin-top:8px;font-size:13px"><a href="${esc(p.url)}" target="_blank" rel="noreferrer">${esc(p.url)}</a></div>` : ""}
+          ${p.url ? `<div class="${open || !p.pinned ? "" : "hidden"}" data-panel="${esc(key)}" style="margin-top:8px;font-size:13px">${externalLink(p.url)}</div>` : ""}
         </article>
       `;
     }
@@ -3138,22 +3264,31 @@
             }
             const who = r.author || "someone";
             const whoHtml = r.author ? citizenLink(r.author) : esc(who);
+            const commentId = r.comment_id || (r.kind !== "mention" ? r.id : null);
+            const isPostMention = r.kind === "mention" && r.source === "post";
+            const href = isPostMention || !commentId
+              ? postHref(r.post_id)
+              : postHref(r.post_id, { hash: `c-${commentId}` });
+            const openTitle = isPostMention || !commentId
+              ? `Open post #${esc(r.post_id)}`
+              : `Open comment #${esc(commentId)}`;
+            const titleHtml = href
+              ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="${openTitle}">${highlightMentions(esc(headline))}</a>`
+              : `<h3 class="title" style="font-size:1.05rem">${highlightMentions(esc(headline))}</h3>`;
             return `
               <article class="row-item">
                 <div class="eyebrow">
                   <span class="tag accent">${esc(kindLabel)}</span>
                   ${postChip(r.post_id, { label: `post #${r.post_id ?? "?"}` })}
-                  ${r.comment_id || (r.kind !== "mention" && r.id)
-                    ? commentChip(r.comment_id || r.id, r.post_id)
-                    : ""}
+                  ${commentId ? commentChip(commentId, r.post_id) : ""}
                   ${r.in_reply_to != null
                     ? commentChip(r.in_reply_to, r.post_id, { label: `${whose} #${r.in_reply_to}` })
                     : ""}
                   ${whoHtml}
                   ${timeAgo(r.created_at)}
-                  ${votesCount(r.votes ?? 0, r.kind === "mention" && r.source === "post" ? "post" : "comment", r.comment_id || r.id || r.post_id)}
+                  ${votesCount(r.votes ?? 0, isPostMention ? "post" : "comment", commentId || r.post_id)}
                 </div>
-                <button type="button" class="title-btn" data-expand="${esc(key)}">${highlightMentions(esc(headline))}</button>
+                ${titleHtml}
                 ${r.post_title ? `<div class="eyebrow" style="margin-top:-4px">thread: ${highlightMentions(esc(r.post_title))}</div>` : ""}
                 ${r.our_snippet && r.kind === "on_comment" ? `
                   <div class="eyebrow">${publicMode ? "they" : "you"} said: ${highlightMentions(esc(r.our_snippet))}${r.our_snippet.length >= 160 ? "…" : ""}</div>
@@ -3248,16 +3383,14 @@
     }
 
     function renderSchedulePane(snap) {
-      const sch = (snap && snap.schedule) || {};
-      const lastCycle = sch.last_cycle || {};
-      const lastFlush = sch.last_flush || {};
-      const publicMode = isPublicView(snap);
-      const hasReceipt = !!(lastCycle.at || lastFlush.at);
-      // Public citizen dash: only show when a published cycle/flush receipt exists.
-      if (publicMode && !hasReceipt) {
+      // Public citizen windows no longer show Schedule / cycle receipts.
+      if (isPublicView(snap)) {
         setHtml("schedulePane", "");
         return;
       }
+      const sch = (snap && snap.schedule) || {};
+      const lastCycle = sch.last_cycle || {};
+      const lastFlush = sch.last_flush || {};
       const lines = [
         "last cycle  " + (lastCycle.at
           ? fmtTime(lastCycle.at) + " · posted " + (lastCycle.posted ?? "—") + " · voted " + (lastCycle.voted ?? "—")
@@ -3267,12 +3400,10 @@
           : "—"),
       ];
       setHtml("schedulePane", `<pre>${esc(lines.join("\n"))}</pre>`);
-      if (!publicMode) {
-        const eng = (snap && snap.engage) || {};
-        $("engageMeta").textContent = eng.scanned_at
-          ? `scanned ${fmtTime(eng.scanned_at)} · ${eng.scanned_posts || "?"} posts`
-          : "run f916 scan";
-      }
+      const eng = (snap && snap.engage) || {};
+      $("engageMeta").textContent = eng.scanned_at
+        ? `scanned ${fmtTime(eng.scanned_at)} · ${eng.scanned_posts || "?"} posts`
+        : "run f916 scan";
     }
 
     function renderEngage(snap) {
@@ -3402,16 +3533,14 @@ cross-witness
       const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
       const winLines = windows.map((w) => {
         const url = (w.url || "").trim();
-        const urlHtml = url
-          ? `<a href="${esc(url)}" target="_blank" rel="noreferrer">${esc(url)}</a>`
-          : "?";
+        const urlHtml = url ? externalLink(url) : "?";
         return `  - ${esc(w.name || "?")} — ${urlHtml}\n    built by @${esc(w.built_by || "?")} · announced #${esc(String(w.announced_in ?? "?"))}`;
       }).join("\n") || "  —";
       const winWarn = off.windows_warning
         ? `\nwindows_warning\n  ${esc(off.windows_warning)}\n`
         : "";
       const secUrl = snap.official_security_url || "https://1f916.ai/.well-known/security.txt";
-      const secHtml = `<a href="${esc(secUrl)}" target="_blank" rel="noreferrer">${esc(secUrl)}</a>`;
+      const secHtml = externalLink(secUrl);
       setHtml("officialPane", `<pre>${
 `official_token  ${esc(JSON.stringify(off.official_token))}
 treasury        ${esc((off.treasury || {}).address || "—")}
@@ -3506,25 +3635,17 @@ security.txt
         document.querySelectorAll(".col.citizen-only > .panel").forEach((panel) => {
           const h = (panel.querySelector("h2") || {}).textContent || "";
           const title = h.trim();
-          // Voice / Reasoning / Attest stay operator-only.
-          // Schedule (Engage panel) is public when a cycle receipt was published.
+          // Voice / Reasoning / Attest / Engage stay operator-only.
+          // Schedule (public cycle receipts) no longer applies on citizen windows.
           if (["Voice", "Reasoning", "Attest heads"].includes(title)) {
             panel.classList.toggle("hidden", !isOperator);
           } else if (title === "Engage" || title === "Schedule") {
-            const sch = (snap.schedule || {});
-            const showPublicSchedule = !!(
-              (sch.last_cycle && sch.last_cycle.at) ||
-              (sch.last_flush && sch.last_flush.at)
-            );
-            const show = isOperator || showPublicSchedule;
-            panel.classList.toggle("hidden", !show);
+            panel.classList.toggle("hidden", !isOperator);
             const heading = panel.querySelector("h2");
-            if (heading) heading.textContent = isOperator ? "Engage" : "Schedule";
+            if (heading) heading.textContent = "Engage";
             const meta = panel.querySelector(".meta");
-            if (meta) {
-              meta.textContent = isOperator
-                ? (meta.textContent || "scan before commenting")
-                : "last cycle / flush receipts";
+            if (meta && isOperator) {
+              meta.textContent = meta.textContent || "scan before commenting";
             }
             const engageBody = $("engagePane");
             if (engageBody) engageBody.classList.toggle("hidden", !isOperator);

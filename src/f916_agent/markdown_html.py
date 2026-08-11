@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import re
 from typing import List, Optional
+from urllib.parse import urlparse
 
 
 _FENCE = re.compile(r"```([a-zA-Z0-9_+-]*)\n?([\s\S]*?)```")
@@ -14,6 +15,30 @@ _BOLD = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _URL = re.compile(r"(?<![\"'=])(https?://[^\s<]+)")
 _TAG_OR_TEXT = re.compile(r"(<[^>]+>)|([^<]+)")
+
+
+def safe_href(url: str) -> Optional[str]:
+    """Return a normalized http(s) URL, or None if it must stay plain text.
+
+    Watch renders markdown links (unlike Observer, which refuses clickable
+    citizen URLs). The scheme gate is the floor under that extra phishing
+    surface — javascript:/data:/etc. never become hrefs.
+
+    ``url`` may already have been HTML-escaped (esc-before-link); undo the
+    basic entities before parsing so ``&`` in query strings survives.
+    """
+    raw = html.unescape((url or "").strip())
+    if not re.match(r"^https?://", raw, re.IGNORECASE):
+        return None
+    try:
+        parsed = urlparse(raw)
+    except Exception:
+        return None
+    if parsed.scheme not in ("http", "https"):
+        return None
+    if not parsed.netloc:
+        return None
+    return parsed.geturl()
 
 
 def highlight_handle(html_text: str, handle: Optional[str]) -> str:
@@ -38,8 +63,11 @@ def _inline(text: str) -> str:
     """text must already be HTML-escaped, except we allow our own tags later."""
 
     def link(m: re.Match) -> str:
-        return '<a href="{}" target="_blank" rel="noreferrer">{}</a>'.format(
-            html.escape(m.group(2), quote=True), m.group(1)
+        href = safe_href(m.group(2))
+        if not href:
+            return "{} ({})".format(m.group(1), html.escape(m.group(2)))
+        return '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>'.format(
+            html.escape(href, quote=True), m.group(1)
         )
 
     text = _LINK.sub(link, text)
@@ -48,9 +76,12 @@ def _inline(text: str) -> str:
     text = _ITALIC.sub(lambda m: "<em>{}</em>".format(m.group(1)), text)
 
     def autolink(m: re.Match) -> str:
-        url = m.group(1).rstrip(".,);]")
-        return '<a href="{}" target="_blank" rel="noreferrer">{}</a>'.format(
-            html.escape(url, quote=True), html.escape(url)
+        raw = m.group(1).rstrip(".,);]")
+        href = safe_href(raw)
+        if not href:
+            return html.escape(raw)
+        return '<a href="{}" target="_blank" rel="noopener noreferrer">{}</a>'.format(
+            html.escape(href, quote=True), html.escape(href)
         )
 
     parts: List[str] = []

@@ -42,7 +42,7 @@
     }
     a { color: var(--accent); text-decoration: none; }
     .shell {
-      max-width: 1080px;
+      max-width: none;
       margin: 0 auto;
       padding: 20px 24px 72px;
       animation: rise 0.5s ease-out;
@@ -66,7 +66,7 @@
       -webkit-backdrop-filter: blur(14px) saturate(1.2);
     }
     .top-bar-inner {
-      max-width: 1080px;
+      max-width: none;
       margin: 0 auto;
       padding: 8px 24px 10px;
     }
@@ -628,6 +628,31 @@
         .replace(/'/g, "&#39;");
     }
 
+    function safeHref(url) {
+      const raw = String(url ?? "")
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .trim();
+      if (!/^https?:\/\//i.test(raw)) return null;
+      try {
+        const u = new URL(raw);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+        return u.href;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function externalLink(url, label) {
+      const href = safeHref(url);
+      if (!href) return esc(label != null ? label : url);
+      const text = label != null ? label : href;
+      return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(text) + "</a>";
+    }
+
     function moneyFromCents(cents) {
       if (cents == null || cents === "") return null;
       const n = Number(cents);
@@ -712,9 +737,7 @@
       const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
       const winLines = windows.map((w) => {
         const url = String((w && w.url) || "").trim();
-        const urlHtml = url
-          ? '<a href="' + esc(url) + '" target="_blank" rel="noreferrer">' + esc(url) + "</a>"
-          : "?";
+        const urlHtml = url ? externalLink(url) : "?";
         return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
           + "\n    built by @" + esc((w && w.built_by) || "?")
           + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"));
@@ -734,7 +757,7 @@
         + winWarn
         + "\nto list yours: announce in a public post, keep source open, PR → github.com/1f916-ai/1f916 (src/windows.ts)\n\n"
         + "security.txt\n  "
-        + '<a href="' + esc(secUrl) + '" target="_blank" rel="noreferrer">' + esc(secUrl) + "</a>"
+        + externalLink(secUrl)
         + "</pre>";
     }
 
@@ -937,7 +960,7 @@
         $("walletPane").innerHTML += `
         <div class="row" style="margin-top:10px"><div class="lab">windows</div><div class="val" style="font-family:inherit;font-size:12px">${
           windows.map((w) =>
-            `<div><a href="${esc(w.url || "#")}" target="_blank" rel="noreferrer">${esc(w.name || w.url || "?")}</a> · @${esc(w.built_by || "?")}</div>`
+            `<div>${externalLink(w.url, w.name || w.url || "?")} · @${esc(w.built_by || "?")}</div>`
           ).join("")
         }<div style="color:var(--muted);margin-top:6px">${esc(off.windows_warning || "Listed, not endorsed. Never enter a citizen secret.")}</div></div></div>`;
       }

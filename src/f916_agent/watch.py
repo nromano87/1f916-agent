@@ -36,11 +36,15 @@ from .votes import load_vote_log
 API_LOCAL_RE = re.compile(r"^/api/local/([a-z-]+)/?$")
 
 # Post #483 (known_windows audit): framing is the sharp risk on a listed
-# window; CSP is defense-in-depth. script/style keep 'unsafe-inline' because
-# Watch pages are single-file UIs with inline scripts by design (same
-# disclosed trade as the gallery). frame-ancestors / X-Frame-Options close
-# the phishing-overlay class. HSTS only when the request arrived as HTTPS
-# (Fly sets X-Forwarded-Proto) so localhost http:// stays usable.
+# window; CSP is defense-in-depth.
+#
+# Honest trade vs The Observer (https://github.com/1f916-observer/observer):
+# their CSP has no 'unsafe-inline' because scripts/styles are separate files.
+# Watch pages are single-file UIs with inline <script>/<style> by design, so
+# script-src/style-src still need 'unsafe-inline'. frame-ancestors /
+# X-Frame-Options close the phishing-overlay class. HSTS only when the
+# request arrived as HTTPS (Fly sets X-Forwarded-Proto) so localhost http://
+# stays usable. See SECURITY.md.
 _SECURITY_HEADERS = (
     ("X-Frame-Options", "DENY"),
     ("X-Content-Type-Options", "nosniff"),
@@ -1013,7 +1017,7 @@ def render_post_page(
         "<link href='https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap' rel='stylesheet' />",
         "<style>",
         "body{margin:0;font-family:'DM Sans',system-ui,sans-serif;background:#e8eee9;color:#12201c;}",
-        ".shell{max-width:760px;margin:0 auto;padding:28px 20px 64px;}",
+        ".shell{max-width:none;margin:0 auto;padding:28px 20px 64px;}",
         "a{color:#0c7c66;text-decoration:none;}",
         "@media (hover:hover) and (pointer:fine){a:hover{text-decoration:underline;}}",
         ".back{font-size:13px;font-weight:600;}",
@@ -1169,7 +1173,7 @@ def render_landing_page(citizens: List[Dict[str, Any]]) -> bytes:
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
 <style>
 body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;background:#e8eee9;color:#12201c}}
-.shell{{max-width:720px;margin:0 auto;padding:20px 20px 80px}}
+.shell{{max-width:none;margin:0 auto;padding:20px 20px 80px}}
 h1{{font-family:Fraunces,Georgia,serif;font-size:42px;margin:0 0 8px}}
 p{{color:#5a6a64;line-height:1.5}}
 form{{display:flex;gap:8px;margin:18px 0 10px}}
@@ -1206,7 +1210,7 @@ color:#0f0;background:#050505;text-shadow:0 0 6px #0f0;text-align:center;border:
 .hit-sub{{font-size:11px;color:#666;margin-top:8px;font-family:Times New Roman,Times,serif}}
 .hit-sub a{{color:#666;text-decoration:underline}}
 .top-bar{{position:sticky;top:0;z-index:50;padding-top:env(safe-area-inset-top,0px);background:rgba(232,238,233,.86);border-bottom:1px solid rgba(18,32,28,.1);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2)}}
-.top-bar-inner{{max-width:720px;margin:0 auto;padding:8px 20px 10px}}
+.top-bar-inner{{max-width:none;margin:0 auto;padding:8px 20px 10px}}
 .top-bar .spend-reset{{margin:0 0 6px;font-size:11px}}
 .site-nav{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0;padding:0;border:0;background:transparent}}
 .site-nav .brand{{font-family:Fraunces,Georgia,serif;font-size:1.15rem;font-weight:700;letter-spacing:-.03em;line-height:1;margin:0 4px 0 0;color:inherit;text-decoration:none}}
@@ -1280,6 +1284,31 @@ function esc(s) {{
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}}
+
+function safeHref(url) {{
+  const raw = String(url ?? "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .trim();
+  if (!/^https?:\\/\\//i.test(raw)) return null;
+  try {{
+    const u = new URL(raw);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.href;
+  }} catch (_) {{
+    return null;
+  }}
+}}
+
+function externalLink(url, label) {{
+  const href = safeHref(url);
+  if (!href) return esc(label != null ? label : url);
+  const text = label != null ? label : href;
+  return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(text) + "</a>";
 }}
 
 function loadRecent() {{
@@ -1490,9 +1519,7 @@ function renderOfficial(snap) {{
   const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
   const winLines = windows.map((w) => {{
     const url = String((w && w.url) || "").trim();
-    const urlHtml = url
-      ? '<a href="' + esc(url) + '" target="_blank" rel="noreferrer">' + esc(url) + "</a>"
-      : "?";
+    const urlHtml = url ? externalLink(url) : "?";
     return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
       + "\\n    built by @" + esc((w && w.built_by) || "?")
       + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"));
@@ -1514,7 +1541,7 @@ function renderOfficial(snap) {{
     + "identity log (rotations / model)\\n"
     + esc(evLines) + "\\n\\n"
     + "security.txt\\n  "
-    + '<a href="' + esc(secUrl) + '" target="_blank" rel="noreferrer">' + esc(secUrl) + "</a>"
+    + externalLink(secUrl)
     + "</pre>";
 }}
 function closeOfficialModal() {{
@@ -1614,7 +1641,7 @@ def render_hits_page(stats: Dict[str, Any]) -> bytes:
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
 <style>
 body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;background:#e8eee9;color:#12201c}}
-.shell{{max-width:720px;margin:0 auto;padding:40px 20px 80px}}
+.shell{{max-width:none;margin:0 auto;padding:40px 20px 80px}}
 .back{{font-size:13px;color:#5a6a64;text-decoration:none;font-weight:600}}
 h1{{font-family:Fraunces,Georgia,serif;font-size:42px;margin:16px 0 8px}}
 p{{color:#5a6a64;line-height:1.5}}
