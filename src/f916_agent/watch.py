@@ -742,7 +742,11 @@ def _spend_reset_banner() -> str:
         ".spend-reset{font-size:12px;font-weight:600;color:#5a6a64;"
         "letter-spacing:.01em;font-variant-numeric:tabular-nums;"
         "margin:0 0 14px;line-height:1.2}"
-        ".top-bar .spend-reset{margin:0 0 6px;font-size:11px}"
+        ".site-nav .spend-reset,.top-bar .spend-reset{"
+        "margin:0;font-size:11px;line-height:1;padding:7px 11px;"
+        "border-radius:999px;background:rgba(255,255,255,.5);"
+        "border:1px solid rgba(18,32,28,.1);white-space:nowrap;"
+        "flex:0 0 auto;order:5;min-width:13.75rem;text-align:left}"
         "</style>"
         "<div class='spend-reset' id='spendReset' aria-live='polite'>"
         "spend reset in —</div>"
@@ -750,19 +754,14 @@ def _spend_reset_banner() -> str:
         "function nextReset(now){"
         "return new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),"
         "now.getUTCDate()+1,0,0,0,0));}"
-        "function fmt(sec){"
-        "var d=Math.floor(sec/86400);sec%=86400;"
-        "var h=Math.floor(sec/3600);sec%=3600;"
-        "var m=Math.floor(sec/60);var s=sec%60;"
-        "if(d>0)return d+'d '+h+'h '+m+'m';"
-        "if(h>0)return h+'h '+m+'m';"
-        "if(m>0)return m+'m '+s+'s';"
-        "return s+'s';}"
         "function tick(){"
         "var el=document.getElementById('spendReset');if(!el)return;"
         "var now=new Date();"
         "var sec=Math.max(0,Math.floor((nextReset(now)-now)/1000));"
-        "el.textContent='spend reset in '+fmt(sec);}"
+        "var h=String(Math.floor(sec/3600)).padStart(2,'0');sec%=3600;"
+        "var m=String(Math.floor(sec/60)).padStart(2,'0');"
+        "var s=String(sec%60).padStart(2,'0');"
+        "el.textContent='spend reset in '+h+':'+m+':'+s+' UTC';}"
         "tick();setInterval(tick,1000);"
         "})();</script>"
     )
@@ -1189,8 +1188,10 @@ transition:border-color .15s ease,background .15s ease,color .15s ease}}
 .seg button:hover{{border-color:rgba(12,124,102,.4)}}
 .hit-sub a:hover{{color:#0c7c66}}
 .site-nav .btn:hover{{background:#fff;border-color:rgba(12,124,102,.4);transform:translateY(-1px)}}
+.site-nav .btn.primary:hover{{background:#0a6a57}}
 .site-nav .btn.active:hover{{background:rgba(12,124,102,.12);border-color:rgba(12,124,102,.45);color:#0c7c66}}
 .site-nav .brand:hover{{opacity:.85;text-decoration:none}}
+.nav-toggle:hover{{border-color:rgba(12,124,102,.35);background:#fff}}
 }}
 .toolbar{{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 14px}}
 .counts{{font-size:13px;color:#5a6a64;font-weight:600}}
@@ -1210,14 +1211,44 @@ color:#0f0;background:#050505;text-shadow:0 0 6px #0f0;text-align:center;border:
 .hit-sub{{font-size:11px;color:#666;margin-top:8px;font-family:Times New Roman,Times,serif}}
 .hit-sub a{{color:#666;text-decoration:underline}}
 .top-bar{{position:sticky;top:0;z-index:50;padding-top:env(safe-area-inset-top,0px);background:rgba(232,238,233,.86);border-bottom:1px solid rgba(18,32,28,.1);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2)}}
-.top-bar-inner{{max-width:none;margin:0 auto;padding:8px 20px 10px}}
-.top-bar .spend-reset{{margin:0 0 6px;font-size:11px}}
-.site-nav{{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0;padding:0;border:0;background:transparent}}
-.site-nav .brand{{font-family:Fraunces,Georgia,serif;font-size:1.15rem;font-weight:700;letter-spacing:-.03em;line-height:1;margin:0 4px 0 0;color:inherit;text-decoration:none}}
+.top-bar-inner{{max-width:none;margin:0 auto;padding:8px 24px 10px}}
+.site-nav{{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin:0;padding:0;border:0;background:transparent}}
+.site-nav .brand{{font-family:Fraunces,Georgia,serif;font-size:1.15rem;font-weight:700;letter-spacing:-.03em;line-height:1;margin:0 4px 0 0;color:inherit;text-decoration:none;order:1;flex:0 0 auto}}
 .site-nav .brand span{{color:#0c7c66;font-style:italic;font-weight:600}}
-.site-nav .nav-title{{font-family:Fraunces,Georgia,serif;font-size:1.15rem;font-weight:600;letter-spacing:-.02em;line-height:1;color:#12201c;margin:0 6px 0 0;padding:0 10px 0 0;border-right:1px solid rgba(18,32,28,.1)}}
-.site-nav .btn{{display:inline-flex;align-items:center;justify-content:center;padding:9px 14px;border-radius:999px;background:#f7faf8;color:#12201c;font:inherit;font-size:13px;font-weight:600;text-decoration:none;border:1px solid rgba(18,32,28,.1);cursor:pointer}}
+.site-nav .nav-drawer{{display:contents}}
+.site-nav .nav-links{{display:flex;align-items:center;gap:8px;flex:0 0 auto;order:3}}
+.site-nav .nav-spacer{{flex:1 1 auto;min-width:8px;order:4}}
+.site-nav .nav-meta{{display:flex;align-items:center;gap:8px;flex:0 0 auto;order:6}}
+.site-nav .btn{{display:inline-flex;align-items:center;justify-content:center;padding:9px 14px;border-radius:999px;background:transparent;color:#12201c;font:inherit;font-size:13px;font-weight:600;text-decoration:none;border:1px solid rgba(18,32,28,.15);cursor:pointer;transition:transform .15s ease,background .15s ease,border-color .15s ease}}
+.site-nav .btn.primary{{background:#0c7c66;border-color:#0c7c66;color:#fff}}
 .site-nav .btn.active{{background:rgba(12,124,102,.12);border-color:rgba(12,124,102,.35);color:#0c7c66}}
+.site-nav .chip-live{{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:12px;font-weight:600;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.72);border:1px solid rgba(18,32,28,.1);min-width:7.75rem;flex:0 0 auto}}
+.site-nav .chip-live i{{width:8px;height:8px;border-radius:50%;background:#1f8a4c;box-shadow:0 0 0 0 rgba(31,138,76,.45)}}
+.site-nav .updated-at{{font-size:12px;color:#5a6a64;line-height:1;min-width:9.5rem;flex:0 0 auto}}
+.site-nav .updated-at:empty{{visibility:hidden}}
+.site-nav .spend-reset{{min-width:13.75rem;text-align:left}}
+.nav-toggle{{display:none;flex:0 0 auto;align-items:center;justify-content:center;width:40px;height:40px;padding:0;border-radius:12px;border:1px solid rgba(18,32,28,.1);background:rgba(255,255,255,.55);color:#12201c;cursor:pointer;order:7}}
+.nav-toggle-bars{{display:block;width:16px;height:2px;border-radius:2px;background:currentColor;box-shadow:0 -5px 0 currentColor,0 5px 0 currentColor}}
+.site-nav.is-open .nav-toggle-bars{{background:transparent;box-shadow:none;position:relative}}
+.site-nav.is-open .nav-toggle-bars::before,.site-nav.is-open .nav-toggle-bars::after{{content:"";position:absolute;left:0;top:0;width:16px;height:2px;border-radius:2px;background:currentColor}}
+.site-nav.is-open .nav-toggle-bars::before{{transform:rotate(45deg)}}
+.site-nav.is-open .nav-toggle-bars::after{{transform:rotate(-45deg)}}
+@media (max-width:960px){{
+.top-bar-inner{{padding:8px 16px 10px}}
+.site-nav .brand{{flex:0 1 auto;min-width:0;margin:0;font-size:1.08rem;order:1}}
+.site-nav .nav-spacer{{display:none}}
+.site-nav .spend-reset{{order:2;margin-left:auto;padding:6px 9px;font-size:10.5px;max-width:min(46vw,11.5rem);min-width:0;overflow:hidden;text-overflow:ellipsis}}
+.nav-toggle{{display:inline-flex;order:3}}
+.site-nav .nav-drawer{{display:none;position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:60;flex-direction:column;gap:10px;padding:12px;border-radius:16px;background:rgba(247,250,248,.96);border:1px solid rgba(18,32,28,.1);box-shadow:0 12px 32px rgba(18,32,28,.14);backdrop-filter:blur(14px) saturate(1.15);-webkit-backdrop-filter:blur(14px) saturate(1.15);order:4}}
+.site-nav.is-open .nav-drawer{{display:flex}}
+.site-nav .nav-links{{display:flex;flex-wrap:wrap;gap:6px;width:100%;padding:2px;border-radius:14px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.1);order:initial}}
+.site-nav .nav-links .btn{{flex:1 1 calc(50% - 6px);min-width:0;justify-content:center;text-align:center;min-height:40px;padding:8px 10px;font-size:12.5px;border-radius:12px}}
+.site-nav .nav-links .btn.active{{background:#fff;border-color:rgba(12,124,102,.28);box-shadow:0 1px 2px rgba(18,32,28,.06)}}
+.site-nav .nav-meta{{display:flex;flex-wrap:wrap;align-items:center;gap:8px;width:100%;order:initial}}
+.site-nav .updated-at{{flex:1 1 auto;min-width:0}}
+.site-nav .chip-live{{padding:6px 10px;font-size:11px;min-width:0}}
+.site-nav #refreshBtn{{margin-left:auto;padding:8px 12px;min-height:40px;font-size:12px}}
+}}
 .modal-backdrop{{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(18,32,28,.42);backdrop-filter:blur(4px)}}
 .modal-backdrop.hidden{{display:none !important}}
 .modal-sheet{{width:min(640px,100%);max-height:min(85vh,720px);overflow:auto;background:#f7faf8;border:1px solid rgba(18,32,28,.1);border-radius:16px;box-shadow:0 18px 48px rgba(18,32,28,.22);padding:14px}}
@@ -1229,14 +1260,26 @@ body.modal-open{{overflow:hidden}}
 </style></head><body>
 <header class="top-bar">
   <div class="top-bar-inner">
-    <!--SPEND_RESET-->
-    <nav class="site-nav" aria-label="Watch">
+    <nav class="site-nav" id="siteNav" aria-label="Watch">
       <a class="brand" href="/">1F916 <span>Watch</span></a>
-      <h1 class="nav-title">Citizens</h1>
-      <a class="btn" href="/" data-nav="front">Front</a>
-      <a class="btn active" href="/citizens" data-nav="citizens" aria-current="page">Citizens</a>
-      <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
-      <button class="btn" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+      <div class="nav-drawer" id="navPanel">
+        <div class="nav-links">
+          <a class="btn" href="/" data-nav="front">Front</a>
+          <a class="btn active" href="/citizens" data-nav="citizens" aria-current="page">Citizens</a>
+          <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
+          <button class="btn" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+        </div>
+        <div class="nav-meta">
+          <div class="chip-live"><i></i><span>browse</span></div>
+          <div class="updated-at" id="updatedAt"></div>
+          <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </div>
+      <span class="nav-spacer" aria-hidden="true"></span>
+      <!--SPEND_RESET-->
+      <button class="nav-toggle" type="button" id="navToggle" aria-expanded="false" aria-controls="navPanel" aria-label="Open menu">
+        <span class="nav-toggle-bars" aria-hidden="true"></span>
+      </button>
     </nav>
   </div>
 </header>
@@ -1584,6 +1627,36 @@ document.getElementById("officialModal").addEventListener("click", (e) => {{
 document.addEventListener("keydown", (e) => {{
   if (e.key === "Escape") closeOfficialModal();
 }});
+const refreshBtn = document.getElementById("refreshBtn");
+if (refreshBtn) refreshBtn.addEventListener("click", () => location.reload());
+(function initNavToggle() {{
+  const nav = document.getElementById("siteNav");
+  const toggle = document.getElementById("navToggle");
+  if (!nav || !toggle) return;
+  const setOpen = (open) => {{
+    nav.classList.toggle("is-open", open);
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+  }};
+  toggle.addEventListener("click", () => {{
+    setOpen(!nav.classList.contains("is-open"));
+  }});
+  nav.querySelectorAll(".nav-drawer a, .nav-drawer button").forEach((el) => {{
+    if (el.id === "refreshBtn") return;
+    el.addEventListener("click", () => setOpen(false));
+  }});
+  document.addEventListener("click", (e) => {{
+    if (!nav.classList.contains("is-open")) return;
+    if (nav.contains(e.target)) return;
+    setOpen(false);
+  }});
+  document.addEventListener("keydown", (e) => {{
+    if (e.key === "Escape") setOpen(false);
+  }});
+  window.addEventListener("resize", () => {{
+    if (window.matchMedia("(min-width: 961px)").matches) setOpen(false);
+  }});
+}})();
 </script>
 </div></body></html>""".format(
         favicon=FAVICON_LINK,

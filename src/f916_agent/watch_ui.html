@@ -150,14 +150,23 @@
       color: var(--muted);
       letter-spacing: 0.01em;
       font-variant-numeric: tabular-nums;
-      margin: 0 0 6px;
-      line-height: 1.2;
+      margin: 0;
+      line-height: 1;
+      padding: 7px 11px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.5);
+      border: 1px solid var(--line);
+      white-space: nowrap;
+      flex: 0 0 auto;
+      min-width: 13.75rem;
+      text-align: left;
     }
     .site-nav {
+      position: relative;
       display: flex;
       align-items: center;
       gap: 8px;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       margin: 0;
       padding: 0;
       border: 0;
@@ -181,21 +190,6 @@
       font-style: italic;
       font-weight: 600;
     }
-    .site-nav .nav-title {
-      font-family: Fraunces, Georgia, serif;
-      font-size: 1.15rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      line-height: 1;
-      color: var(--ink);
-      margin: 0 6px 0 0;
-      padding: 0 10px 0 0;
-      border-right: 1px solid var(--line);
-      max-width: min(28ch, 42vw);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
     .site-nav .btn.active {
       background: var(--accent-soft);
       border-color: rgba(12, 124, 102, 0.35);
@@ -208,27 +202,89 @@
     }
     .site-nav .nav-spacer {
       flex: 1 1 auto;
-      min-width: 0;
+      min-width: 8px;
+      order: 4;
     }
-    .site-nav .nav-links,
-    .site-nav .nav-meta {
+    .site-nav .spend-reset {
+      order: 5;
+    }
+    .site-nav .nav-drawer {
       display: contents;
     }
+    .site-nav .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      order: 3;
+    }
+    .site-nav .nav-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 0 0 auto;
+      order: 6;
+    }
+    .site-nav .brand { order: 1; }
     .site-nav .chip-live,
     .site-nav .updated-at {
       flex: 0 0 auto;
     }
+    .nav-toggle {
+      display: none;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      padding: 0;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.55);
+      color: var(--ink);
+      cursor: pointer;
+      order: 7;
+    }
+    .nav-toggle-bars {
+      display: block;
+      width: 16px;
+      height: 2px;
+      border-radius: 2px;
+      background: currentColor;
+      box-shadow: 0 -5px 0 currentColor, 0 5px 0 currentColor;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
+    }
+    .site-nav.is-open .nav-toggle-bars {
+      background: transparent;
+      box-shadow: none;
+      position: relative;
+    }
+    .site-nav.is-open .nav-toggle-bars::before,
+    .site-nav.is-open .nav-toggle-bars::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 16px;
+      height: 2px;
+      border-radius: 2px;
+      background: currentColor;
+    }
+    .site-nav.is-open .nav-toggle-bars::before { transform: rotate(45deg); }
+    .site-nav.is-open .nav-toggle-bars::after { transform: rotate(-45deg); }
     .updated-at {
       font-size: 12px;
       color: var(--muted);
       line-height: 1;
+      min-width: 9.5rem;
     }
     .updated-at:empty {
-      display: none;
+      visibility: hidden;
     }
     .chip-live {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 8px;
       font-size: 12px;
       font-weight: 600;
@@ -237,6 +293,7 @@
       background: var(--panel);
       border: 1px solid var(--line);
       backdrop-filter: blur(10px);
+      min-width: 7.75rem;
     }
     .chip-live i {
       width: 8px; height: 8px; border-radius: 50%;
@@ -1228,86 +1285,109 @@
       }
       .mine-toolbar { position: static; }
 
-      /* Compact two-row nav: brand + status, then link strip */
+      /* Single-row header + hamburger drawer */
       .top-bar-inner {
         padding: 8px 16px 10px;
         padding-left: max(16px, env(safe-area-inset-left));
         padding-right: max(16px, env(safe-area-inset-right));
       }
-      .spend-reset {
-        margin-bottom: 4px;
-      }
       .site-nav {
-        gap: 8px 10px;
-        align-items: center;
+        gap: 8px;
+        flex-wrap: nowrap;
       }
       .site-nav .brand {
-        order: 1;
-        flex: 1 1 auto;
+        flex: 0 1 auto;
         min-width: 0;
         margin: 0;
         font-size: 1.08rem;
-      }
-      .site-nav .nav-title {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0, 0, 0, 0);
-        white-space: nowrap;
-        border: 0;
+        order: 1;
       }
       .site-nav .nav-spacer {
         display: none;
       }
-      .site-nav .nav-meta {
-        display: flex;
+      .site-nav .spend-reset {
         order: 2;
-        flex: 0 0 auto;
-        align-items: center;
-        gap: 8px;
+        margin-left: auto;
+        padding: 6px 9px;
+        font-size: 10.5px;
+        max-width: min(46vw, 11.5rem);
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
       }
-      .site-nav .updated-at {
+      .nav-toggle {
+        display: inline-flex;
+        order: 3;
+      }
+      .site-nav .nav-drawer {
         display: none;
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        right: 0;
+        z-index: 60;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border-radius: 16px;
+        background: rgba(247, 250, 248, 0.96);
+        border: 1px solid var(--line);
+        box-shadow: 0 12px 32px rgba(18, 32, 28, 0.14);
+        backdrop-filter: blur(14px) saturate(1.15);
+        -webkit-backdrop-filter: blur(14px) saturate(1.15);
+        order: 4;
       }
-      .site-nav .chip-live {
-        padding: 6px 10px;
-        font-size: 11px;
-      }
-      .site-nav #refreshBtn {
-        padding: 8px 12px;
-        min-height: 40px;
-        font-size: 12px;
+      .site-nav.is-open .nav-drawer {
+        display: flex;
       }
       .site-nav .nav-links {
         display: flex;
-        order: 3;
-        flex: 1 1 100%;
-        width: 100%;
+        flex-wrap: wrap;
         gap: 6px;
+        width: 100%;
         padding: 2px;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.45);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.55);
         border: 1px solid var(--line);
+        order: initial;
       }
       .site-nav .nav-links .btn {
-        flex: 1 1 0;
+        flex: 1 1 calc(50% - 6px);
         min-width: 0;
         justify-content: center;
         text-align: center;
         min-height: 40px;
-        padding: 8px 6px;
-        font-size: 12px;
-        border-radius: 999px;
-        border-color: transparent;
-        background: transparent;
+        padding: 8px 10px;
+        font-size: 12.5px;
+        border-radius: 12px;
       }
       .site-nav .nav-links .btn.active {
         background: #fff;
         border-color: rgba(12, 124, 102, 0.28);
         box-shadow: 0 1px 2px rgba(18, 32, 28, 0.06);
+      }
+      .site-nav .nav-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        order: initial;
+      }
+      .site-nav .updated-at {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .site-nav .chip-live {
+        padding: 6px 10px;
+        font-size: 11px;
+        min-width: 0;
+      }
+      .site-nav #refreshBtn {
+        margin-left: auto;
+        padding: 8px 12px;
+        min-height: 40px;
+        font-size: 12px;
       }
     }
     @media (max-width: 560px) {
@@ -1323,9 +1403,8 @@
         padding-right: max(14px, env(safe-area-inset-right));
       }
       .site-nav .nav-links .btn {
-        padding: 8px 4px;
-        font-size: 11.5px;
-        letter-spacing: -0.01em;
+        padding: 8px 8px;
+        font-size: 12px;
       }
       .panel-h {
         flex-wrap: wrap;
@@ -1372,6 +1451,10 @@
         color: var(--accent);
       }
       a.brand:hover { opacity: 0.85; text-decoration: none; }
+      .nav-toggle:hover {
+        border-color: rgba(12, 124, 102, 0.35);
+        background: #fff;
+      }
       .btn:hover {
         transform: translateY(-1px);
         border-color: rgba(12, 124, 102, 0.35);
@@ -1411,22 +1494,33 @@
 <body>
   <header class="top-bar">
     <div class="top-bar-inner">
-      <div class="spend-reset" id="spendReset" aria-live="polite">spend reset in —</div>
-      <nav class="site-nav" aria-label="Watch">
+      <nav class="site-nav" id="siteNav" aria-label="Watch">
         <a class="brand" href="/">1F916 <span>Watch</span></a>
-        <h1 class="nav-title" id="navTitle">Front</h1>
-        <div class="nav-links">
-          <a class="btn secondary" href="/" data-nav="front">Front</a>
-          <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
-          <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
-          <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+        <div class="nav-drawer" id="navPanel">
+          <div class="nav-links">
+            <a class="btn secondary" href="/" data-nav="front">Front</a>
+            <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
+            <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
+            <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
+          </div>
+          <div class="nav-meta">
+            <div class="chip-live"><i></i><span id="liveLabel">connecting</span></div>
+            <div class="updated-at" id="updatedAt"></div>
+            <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
+          </div>
         </div>
         <span class="nav-spacer" aria-hidden="true"></span>
-        <div class="nav-meta">
-          <div class="chip-live"><i></i><span id="liveLabel">connecting</span></div>
-          <div class="updated-at" id="updatedAt"></div>
-          <button class="btn primary" id="refreshBtn" type="button">Refresh</button>
-        </div>
+        <div class="spend-reset" id="spendReset" aria-live="polite">spend reset in —</div>
+        <button
+          class="nav-toggle"
+          type="button"
+          id="navToggle"
+          aria-expanded="false"
+          aria-controls="navPanel"
+          aria-label="Open menu"
+        >
+          <span class="nav-toggle-bars" aria-hidden="true"></span>
+        </button>
       </nav>
     </div>
   </header>
@@ -1560,18 +1654,40 @@
     /** Expanded keys survive refresh so Mine posts stay open while polling. */
     const expanded = new Set(JSON.parse(sessionStorage.getItem("f916-expanded") || "[]"));
     const FRONT_ONLY = document.documentElement.dataset.page === "front";
-    function setNavTitle(text) {
-      const el = $("navTitle");
-      if (el) el.textContent = text || "Watch";
-    }
     (function markSiteNav() {
       const key = FRONT_ONLY ? "front" : "citizen";
-      setNavTitle(FRONT_ONLY ? "Front" : "Citizen");
       document.querySelectorAll(".site-nav [data-nav]").forEach((el) => {
         const nav = el.getAttribute("data-nav");
         el.classList.toggle("active", nav === key);
         if (nav === key) el.setAttribute("aria-current", "page");
         else el.removeAttribute("aria-current");
+      });
+    })();
+    (function initNavToggle() {
+      const nav = $("siteNav");
+      const toggle = $("navToggle");
+      if (!nav || !toggle) return;
+      const setOpen = (open) => {
+        nav.classList.toggle("is-open", open);
+        toggle.setAttribute("aria-expanded", open ? "true" : "false");
+        toggle.setAttribute("aria-label", open ? "Close menu" : "Open menu");
+      };
+      toggle.addEventListener("click", () => {
+        setOpen(!nav.classList.contains("is-open"));
+      });
+      nav.querySelectorAll(".nav-drawer a, .nav-drawer button").forEach((el) => {
+        el.addEventListener("click", () => setOpen(false));
+      });
+      document.addEventListener("click", (e) => {
+        if (!nav.classList.contains("is-open")) return;
+        if (nav.contains(e.target)) return;
+        setOpen(false);
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") setOpen(false);
+      });
+      window.addEventListener("resize", () => {
+        if (window.matchMedia("(min-width: 961px)").matches) setOpen(false);
       });
     })();
     let activeTab = sessionStorage.getItem("f916-tab") || "mine";
@@ -2673,7 +2789,6 @@
           : `${id.handle || "citizen"} · citizen #${id.citizen_id ?? "?"} · tap a title or “Read more” to open the full post.`;
       }
       document.title = `1F916 Watch — ${id.handle || "citizen"}`;
-      setNavTitle("Citizen");
     }
 
     function postCard(p, mineHandle, { forceMine = false, snap = null } = {}) {
@@ -3353,20 +3468,6 @@
     }
 
     // Next UTC midnight — when posts/comments/votes reset
-    function fmtRemaining(target, now = new Date()) {
-      let sec = Math.max(0, Math.floor((target.getTime() - now.getTime()) / 1000));
-      const days = Math.floor(sec / 86400);
-      sec %= 86400;
-      const h = Math.floor(sec / 3600);
-      sec %= 3600;
-      const m = Math.floor(sec / 60);
-      const s = sec % 60;
-      if (days > 0) return `${days}d ${h}h ${m}m`;
-      if (h > 0) return `${h}h ${m}m`;
-      if (m > 0) return `${m}m ${s}s`;
-      return `${s}s`;
-    }
-
     function nextSpendResetAt(now = new Date()) {
       return new Date(Date.UTC(
         now.getUTCFullYear(),
@@ -3379,7 +3480,13 @@
     function paintSpendReset(now = new Date()) {
       const el = $("spendReset");
       if (!el) return;
-      el.textContent = `spend reset in ${fmtRemaining(nextSpendResetAt(now), now)}`;
+      const end = nextSpendResetAt(now);
+      let sec = Math.max(0, Math.floor((end - now) / 1000));
+      const h = String(Math.floor(sec / 3600)).padStart(2, "0");
+      sec %= 3600;
+      const m = String(Math.floor(sec / 60)).padStart(2, "0");
+      const s = String(sec % 60).padStart(2, "0");
+      el.textContent = `spend reset in ${h}:${m}:${s} UTC`;
     }
 
     function renderSchedulePane(snap) {
@@ -3610,7 +3717,6 @@ security.txt
         if (FRONT_ONLY) {
           $("subtitle").textContent = frontSubtitle();
           document.title = "1F916 Watch — Front";
-          setNavTitle("Front");
           renderFeed(snap);
           renderOfficial(snap);
           const foot = document.querySelector("footer.note");
