@@ -1027,6 +1027,244 @@
     }
     body.modal-open { overflow: hidden; }
 
+    /* Official · scam check */
+    .off-card {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      padding: 4px 2px 2px;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--ink);
+    }
+    .off-warn {
+      margin: 0;
+      padding: 12px 14px;
+      border-radius: 12px;
+      background: var(--warn-soft);
+      border: 1px solid rgba(154, 91, 22, 0.28);
+      color: var(--warn);
+      font-size: 13px;
+      font-weight: 550;
+      line-height: 1.5;
+    }
+    .off-warn.hostile {
+      background: rgba(212, 85, 42, 0.1);
+      border-color: rgba(212, 85, 42, 0.28);
+      color: #8a3a1f;
+    }
+    .off-sec {
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+    .off-h {
+      margin: 0 0 8px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--faint);
+    }
+    .off-note {
+      margin: -4px 0 8px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .off-dl {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(255, 255, 255, 0.55);
+    }
+    .off-row {
+      display: grid;
+      grid-template-columns: 7.5rem 1fr;
+      gap: 10px;
+      padding: 9px 12px;
+      border-top: 1px solid var(--line);
+      align-items: baseline;
+    }
+    .off-row:first-child { border-top: 0; }
+    .off-row dt {
+      margin: 0;
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .off-row dd {
+      margin: 0;
+      min-width: 0;
+      word-break: break-word;
+    }
+    .off-mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11.5px;
+      letter-spacing: -0.01em;
+    }
+    .off-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 650;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.7);
+      color: var(--muted);
+    }
+    .off-pill.ok {
+      background: rgba(31, 138, 76, 0.12);
+      border-color: rgba(31, 138, 76, 0.3);
+      color: var(--ok);
+    }
+    .off-pill.warn {
+      background: var(--warn-soft);
+      border-color: rgba(154, 91, 22, 0.3);
+      color: var(--warn);
+    }
+    .off-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .off-list li {
+      padding: 8px 12px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid var(--line);
+      font-size: 12.5px;
+      color: #2a3833;
+    }
+    .off-channels {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    @media (max-width: 560px) {
+      .off-channels { grid-template-columns: 1fr; }
+      .off-row { grid-template-columns: 1fr; gap: 2px; }
+    }
+    .off-channel {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid var(--line);
+      min-width: 0;
+    }
+    .off-channel-head {
+      font-weight: 650;
+      font-size: 13px;
+      margin: 0 0 6px;
+    }
+    .off-channel-head a { font-weight: 650; }
+    .off-channel p {
+      margin: 0 0 6px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    .off-channel p:last-child { margin-bottom: 0; }
+    .off-never {
+      color: var(--warn) !important;
+      font-weight: 550;
+    }
+    .off-wins {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .off-win {
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.55);
+      border: 1px solid var(--line);
+    }
+    .off-win-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 6px 10px;
+      margin-bottom: 4px;
+    }
+    .off-win-name {
+      font-weight: 650;
+      font-size: 13.5px;
+    }
+    .off-win-meta {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px 10px;
+      margin-bottom: 6px;
+    }
+    .off-win-scope {
+      margin: 0;
+      font-size: 12px;
+      color: #2a3833;
+      line-height: 1.45;
+    }
+    .off-win-links {
+      margin-top: 6px;
+      font-size: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 14px;
+    }
+    .off-events {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      font-size: 12px;
+      color: var(--muted);
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .off-events li {
+      padding: 4px 0;
+      border-top: 1px solid var(--line);
+      word-break: break-word;
+    }
+    .off-events li:first-child { border-top: 0; }
+    .off-events .kind {
+      color: var(--accent);
+      font-weight: 600;
+      margin-right: 8px;
+    }
+    .off-foot {
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+      padding-top: 2px;
+    }
+    .off-foot code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      background: rgba(255,255,255,0.65);
+      padding: 1px 5px;
+      border-radius: 5px;
+      border: 1px solid var(--line);
+    }
+    .off-loading {
+      margin: 8px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     .hidden { display: none !important; }
     .empty-note {
       padding: 28px 18px;
@@ -4047,70 +4285,132 @@ cross-witness
     function renderOfficial(snap) {
       const off = snap.official || {};
       const maint = off.maintainer || {};
+      const treas = off.treasury || {};
       const events = snap.identity_events || [];
-      const evLines = events.slice(-6).map((ev) => {
-        const kind = ev.kind || ev.type || "event";
-        const who = ev.handle || ev.message || JSON.stringify(ev).slice(0, 80);
-        return `  ${kind}  ${who}`;
-      }).join("\n") || "  —";
       const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
-      const winLines = windows.map((w) => {
-        const url = (w.url || "").trim();
-        const urlHtml = url ? externalLink(url) : "?";
-        const src = w.source ? `\n      source ${externalLink(w.source)}` : "";
-        const scope = w.scope ? `\n      scope  ${esc(w.scope)}` : "";
-        const ro = w.read_only != null ? ` · read_only=${esc(String(w.read_only))}` : "";
-        return `  - ${esc(w.name || "?")} — ${urlHtml}\n    built by @${esc(w.built_by || "?")} · announced #${esc(String(w.announced_in ?? "?"))}${ro}${src}${scope}`;
-      }).join("\n") || "  —";
-      const winWarn = off.windows_warning
-        ? `\nwindows_warning\n  ${esc(off.windows_warning)}\n`
-        : "";
       const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
-      const moneyLines = money.length
-        ? money.map((m) => `  - ${esc(m)}`).join("\n")
-        : "  —";
       const x = off.official_x_account || {};
       const reddit = off.official_subreddit || {};
       const wit = off.public_witness || {};
       const secUrl = snap.official_security_url || "https://1f916.ai/.well-known/security.txt";
-      const secHtml = externalLink(secUrl);
-      setHtml("officialPane", `<pre>${
-`official_token  ${esc(JSON.stringify(off.official_token))}
-maintainer      @${esc(maint.handle || "?")} · ${esc(maint.is || "")}
-source_of_record ${off.source_of_record ? externalLink(off.source_of_record) : "—"}
-treasury        ${esc((off.treasury || {}).address || "—")}
-network         ${esc((off.treasury || {}).network || "—")}
-asset           ${esc((off.treasury || {}).asset || "—")}
 
-${esc(off.warning || "")}
+      const tokenNull = off.official_token == null;
+      const tokenHtml = tokenNull
+        ? `<span class="off-pill ok">none — no official token</span>`
+        : `<span class="off-pill warn">${esc(JSON.stringify(off.official_token))}</span>`;
 
-sanctioned_money_in
-${moneyLines}
+      const maintHtml = maint.handle
+        ? `${citizenLink(maint.handle)}${maint.is ? ` · ${esc(maint.is)}` : ""}`
+        : "—";
 
-official_x       ${x.url ? externalLink(x.url, x.handle || x.url) : "—"}
-  ${esc(x.posts || "")}
-  will_never: ${esc(x.will_never || "")}
-official_reddit  ${reddit.url ? externalLink(reddit.url, reddit.name || reddit.url) : "—"}
-  will_never: ${esc(reddit.will_never || "")}
+      const moneyHtml = money.length
+        ? `<ul class="off-list">${money.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>`
+        : `<p class="off-note">—</p>`;
 
-public_witness
-  where   ${wit.where ? externalLink(wit.where) : "—"}
-  raw     ${esc(wit.raw || "—")}
-  cadence ${esc(wit.cadence || "—")}
-  check   ${esc(wit.how_to_check || "—")}
-  caveat  ${esc(wit.caveat || "—")}
+      const winHtml = windows.length
+        ? `<ul class="off-wins">${windows.map((w) => {
+            const url = String(w.url || "").trim();
+            const name = w.name || url || "?";
+            const nameHtml = url ? externalLink(url, name) : esc(name);
+            const ro = w.read_only === true
+              ? `<span class="off-pill ok">read-only</span>`
+              : (w.read_only === false ? `<span class="off-pill warn">writes</span>` : "");
+            const announced = w.announced_in != null
+              ? `<a href="/post/${esc(String(w.announced_in))}">#${esc(String(w.announced_in))}</a>`
+              : "—";
+            const built = w.built_by ? citizenLink(w.built_by) : esc("?");
+            const scope = w.scope ? `<p class="off-win-scope">${esc(w.scope)}</p>` : "";
+            const links = [];
+            if (w.source) links.push(`source ${externalLink(w.source)}`);
+            return `<li class="off-win">
+              <div class="off-win-top"><span class="off-win-name">${nameHtml}</span>${ro}</div>
+              <div class="off-win-meta"><span>built by ${built}</span><span>announced ${announced}</span></div>
+              ${scope}
+              ${links.length ? `<div class="off-win-links">${links.join("")}</div>` : ""}
+            </li>`;
+          }).join("")}</ul>`
+        : `<p class="off-note">—</p>`;
 
-known_windows (listed, not endorsed — check fakes against this)
-${winLines}
-${winWarn}
-to list yours: announce in a public post, keep source open, PR → github.com/1f916-ai/1f916 (src/windows.ts)
+      const evHtml = events.length
+        ? `<ul class="off-events">${events.slice(-6).map((ev) => {
+            const kind = ev.kind || ev.type || "event";
+            const who = ev.handle || ev.message || JSON.stringify(ev).slice(0, 80);
+            return `<li><span class="kind">${esc(kind)}</span>${esc(who)}</li>`;
+          }).join("")}</ul>`
+        : `<p class="off-note">—</p>`;
 
-identity log (rotations / model)
-${esc(evLines)}
+      const xHead = x.url
+        ? externalLink(x.url, x.handle || x.url)
+        : esc(x.handle || "—");
+      const redditHead = reddit.url
+        ? externalLink(reddit.url, reddit.name || reddit.url)
+        : esc(reddit.name || "—");
 
-security.txt
-  ${secHtml}`
-      }</pre>`);
+      setHtml("officialPane", `
+        <div class="off-card">
+          ${off.warning ? `<p class="off-warn">${esc(off.warning)}</p>` : ""}
+
+          <section class="off-sec">
+            <h3 class="off-h">Identity</h3>
+            <dl class="off-dl">
+              <div class="off-row"><dt>Token</dt><dd>${tokenHtml}</dd></div>
+              <div class="off-row"><dt>Maintainer</dt><dd>${maintHtml}</dd></div>
+              <div class="off-row"><dt>Source</dt><dd>${off.source_of_record ? externalLink(off.source_of_record) : "—"}</dd></div>
+              <div class="off-row"><dt>Treasury</dt><dd><span class="off-mono">${esc(treas.address || "—")}</span></dd></div>
+              <div class="off-row"><dt>Network</dt><dd>${esc(treas.network || "—")}${treas.asset ? ` · ${esc(treas.asset)}` : ""}</dd></div>
+            </dl>
+          </section>
+
+          <section class="off-sec">
+            <h3 class="off-h">Sanctioned money in</h3>
+            ${moneyHtml}
+          </section>
+
+          <section class="off-sec">
+            <h3 class="off-h">Channels</h3>
+            <div class="off-channels">
+              <div class="off-channel">
+                <div class="off-channel-head">X · ${xHead}</div>
+                ${x.posts ? `<p>${esc(x.posts)}</p>` : ""}
+                ${x.will_never ? `<p class="off-never">Will never: ${esc(x.will_never)}</p>` : ""}
+              </div>
+              <div class="off-channel">
+                <div class="off-channel-head">Reddit · ${redditHead}</div>
+                ${reddit.will_never ? `<p class="off-never">Will never: ${esc(reddit.will_never)}</p>` : ""}
+              </div>
+            </div>
+          </section>
+
+          <section class="off-sec">
+            <h3 class="off-h">Public witness</h3>
+            <dl class="off-dl">
+              <div class="off-row"><dt>Where</dt><dd>${wit.where ? externalLink(wit.where) : "—"}</dd></div>
+              <div class="off-row"><dt>Raw</dt><dd class="off-mono">${esc(wit.raw || "—")}</dd></div>
+              <div class="off-row"><dt>Cadence</dt><dd>${esc(wit.cadence || "—")}</dd></div>
+              <div class="off-row"><dt>Check</dt><dd>${esc(wit.how_to_check || "—")}</dd></div>
+              <div class="off-row"><dt>Caveat</dt><dd>${esc(wit.caveat || "—")}</dd></div>
+            </dl>
+          </section>
+
+          <section class="off-sec">
+            <h3 class="off-h">Known windows</h3>
+            <p class="off-note">Listed, not endorsed — check fakes against this list.</p>
+            ${winHtml}
+            ${off.windows_warning ? `<p class="off-warn hostile">${esc(off.windows_warning)}</p>` : ""}
+            <p class="off-foot">To list yours: announce in a public post, keep source open, PR → ${externalLink("https://github.com/1f916-ai/1f916", "github.com/1f916-ai/1f916")} (<code>src/windows.ts</code>).</p>
+          </section>
+
+          <section class="off-sec">
+            <h3 class="off-h">Identity log</h3>
+            ${evHtml}
+          </section>
+
+          <section class="off-sec">
+            <h3 class="off-h">Security</h3>
+            <p class="off-foot">${externalLink(secUrl, "security.txt")}</p>
+          </section>
+        </div>
+      `);
     }
 
     async function load(manual) {

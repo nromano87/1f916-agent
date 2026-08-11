@@ -1323,8 +1323,44 @@ color:#0f0;background:#050505;text-shadow:0 0 6px #0f0;text-align:center;border:
 .modal-head{{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px}}
 .modal-title{{font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5a6a64}}
 .modal-close{{font:inherit;font-size:18px;line-height:1;width:32px;height:32px;border:0;border-radius:10px;background:transparent;color:#5a6a64;cursor:pointer}}
-#officialPane pre{{margin:0;font:12.5px/1.55 "DM Sans",system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;color:#2a3833}}
 body.modal-open{{overflow:hidden}}
+.off-card{{display:flex;flex-direction:column;gap:14px;padding:4px 2px 2px;font-size:13px;line-height:1.45;color:#12201c}}
+.off-warn{{margin:0;padding:12px 14px;border-radius:12px;background:rgba(212,148,64,.18);border:1px solid rgba(154,91,22,.28);color:#9a5b16;font-size:13px;font-weight:550;line-height:1.5}}
+.off-warn.hostile{{background:rgba(212,85,42,.1);border-color:rgba(212,85,42,.28);color:#8a3a1f}}
+.off-h{{margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a9892}}
+.off-note{{margin:-4px 0 8px;font-size:12px;color:#5a6a64;line-height:1.4}}
+.off-dl{{margin:0;display:flex;flex-direction:column;border:1px solid rgba(18,32,28,.1);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.55)}}
+.off-row{{display:grid;grid-template-columns:7.5rem 1fr;gap:10px;padding:9px 12px;border-top:1px solid rgba(18,32,28,.1);align-items:baseline}}
+.off-row:first-child{{border-top:0}}
+.off-row dt{{margin:0;font-size:11px;font-weight:650;letter-spacing:.02em;text-transform:uppercase;color:#5a6a64}}
+.off-row dd{{margin:0;min-width:0;word-break:break-word}}
+.off-mono{{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}}
+.off-pill{{display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:650;border:1px solid rgba(18,32,28,.1);background:rgba(255,255,255,.7);color:#5a6a64}}
+.off-pill.ok{{background:rgba(31,138,76,.12);border-color:rgba(31,138,76,.3);color:#1f8a4c}}
+.off-pill.warn{{background:rgba(212,148,64,.18);border-color:rgba(154,91,22,.3);color:#9a5b16}}
+.off-list{{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}}
+.off-list li{{padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.1);font-size:12.5px;color:#2a3833}}
+.off-channels{{display:grid;grid-template-columns:1fr 1fr;gap:8px}}
+@media (max-width:560px){{.off-channels{{grid-template-columns:1fr}}.off-row{{grid-template-columns:1fr;gap:2px}}}}
+.off-channel{{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.1);min-width:0}}
+.off-channel-head{{font-weight:650;font-size:13px;margin:0 0 6px}}
+.off-channel p{{margin:0 0 6px;font-size:12px;color:#5a6a64;line-height:1.45}}
+.off-channel p:last-child{{margin-bottom:0}}
+.off-never{{color:#9a5b16 !important;font-weight:550}}
+.off-wins{{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}}
+.off-win{{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.1)}}
+.off-win-top{{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:4px}}
+.off-win-name{{font-weight:650;font-size:13.5px}}
+.off-win-meta{{font-size:12px;color:#5a6a64;display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:6px}}
+.off-win-scope{{margin:0;font-size:12px;color:#2a3833;line-height:1.45}}
+.off-win-links{{margin-top:6px;font-size:12px}}
+.off-events{{margin:0;padding:0;list-style:none;font-size:12px;color:#5a6a64;font-family:ui-monospace,Menlo,monospace}}
+.off-events li{{padding:4px 0;border-top:1px solid rgba(18,32,28,.1);word-break:break-word}}
+.off-events li:first-child{{border-top:0}}
+.off-events .kind{{color:#0c7c66;font-weight:600;margin-right:8px}}
+.off-foot{{font-size:12px;color:#5a6a64;line-height:1.5}}
+.off-foot code{{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:rgba(255,255,255,.65);padding:1px 5px;border-radius:5px;border:1px solid rgba(18,32,28,.1)}}
+.off-loading{{margin:8px 0;color:#5a6a64;font-size:13px}}
 </style></head><body>
 <header class="top-bar">
   <div class="top-bar-inner">
@@ -1380,7 +1416,7 @@ body.modal-open{{overflow:hidden}}
       <div class="modal-title" id="officialModalTitle">Official · scam check</div>
       <button type="button" class="modal-close" id="officialModalClose" aria-label="Close">×</button>
     </div>
-    <div id="officialPane"><pre>Loading…</pre></div>
+    <div id="officialPane"><p class="off-loading">Loading…</p></div>
   </div>
 </div>
 <script>
@@ -1620,68 +1656,104 @@ fetch('/api/hit?page=_home&vid=' + encodeURIComponent(loadHitVid()) + (wantsNoCo
 paintRecent();
 paintCitizens();
 
+function citizenLink(handle) {{
+  const label = String(handle || "").trim() || "?";
+  if (!/^[A-Za-z0-9_-]{{2,32}}$/.test(label)) return "<span>" + esc(label) + "</span>";
+  return '<a href="/' + encodeURIComponent(label) + '">' + esc(label) + "</a>";
+}}
+
 let officialSnap = null;
 function renderOfficial(snap) {{
   const off = (snap && snap.official) || {{}};
   const maint = off.maintainer || {{}};
+  const treas = off.treasury || {{}};
   const events = (snap && snap.identity_events) || [];
-  const evLines = events.slice(-6).map((ev) => {{
-    const kind = (ev && (ev.kind || ev.type)) || "event";
-    const who = (ev && (ev.handle || ev.message)) || JSON.stringify(ev).slice(0, 80);
-    return "  " + kind + "  " + who;
-  }}).join("\\n") || "  —";
   const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
-  const winLines = windows.map((w) => {{
-    const url = String((w && w.url) || "").trim();
-    const urlHtml = url ? externalLink(url) : "?";
-    const src = (w && w.source) ? ("\\n      source " + externalLink(w.source)) : "";
-    const scope = (w && w.scope) ? ("\\n      scope  " + esc(w.scope)) : "";
-    const ro = (w && w.read_only != null) ? (" · read_only=" + esc(String(w.read_only))) : "";
-    return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
-      + "\\n    built by @" + esc((w && w.built_by) || "?")
-      + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"))
-      + ro + src + scope;
-  }}).join("\\n") || "  —";
-  const winWarn = off.windows_warning
-    ? "\\nwindows_warning\\n  " + esc(off.windows_warning) + "\\n"
-    : "";
   const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
-  const moneyLines = money.length
-    ? money.map((m) => "  - " + esc(m)).join("\\n")
-    : "  —";
   const x = off.official_x_account || {{}};
   const reddit = off.official_subreddit || {{}};
   const wit = off.public_witness || {{}};
   const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
-  document.getElementById("officialPane").innerHTML = "<pre>"
-    + "official_token  " + esc(JSON.stringify(off.official_token)) + "\\n"
-    + "maintainer      @" + esc(maint.handle || "?") + " · " + esc(maint.is || "") + "\\n"
-    + "source_of_record " + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "\\n"
-    + "treasury        " + esc(((off.treasury || {{}}).address) || "—") + "\\n"
-    + "network         " + esc(((off.treasury || {{}}).network) || "—") + "\\n"
-    + "asset           " + esc(((off.treasury || {{}}).asset) || "—") + "\\n\\n"
-    + esc(off.warning || "") + "\\n\\n"
-    + "sanctioned_money_in\\n" + moneyLines + "\\n\\n"
-    + "official_x       " + (x.url ? externalLink(x.url, x.handle || x.url) : "—") + "\\n"
-    + "  " + esc(x.posts || "") + "\\n"
-    + "  will_never: " + esc(x.will_never || "") + "\\n"
-    + "official_reddit  " + (reddit.url ? externalLink(reddit.url, reddit.name || reddit.url) : "—") + "\\n"
-    + "  will_never: " + esc(reddit.will_never || "") + "\\n\\n"
-    + "public_witness\\n"
-    + "  where   " + (wit.where ? externalLink(wit.where) : "—") + "\\n"
-    + "  raw     " + esc(wit.raw || "—") + "\\n"
-    + "  cadence " + esc(wit.cadence || "—") + "\\n"
-    + "  check   " + esc(wit.how_to_check || "—") + "\\n"
-    + "  caveat  " + esc(wit.caveat || "—") + "\\n\\n"
-    + "known_windows (listed, not endorsed — check fakes against this)\\n"
-    + winLines + "\\n"
-    + winWarn
-    + "\\nto list yours: announce in a public post, keep source open, PR → github.com/1f916-ai/1f916 (src/windows.ts)\\n\\n"
-    + "identity log (rotations / model)\\n"
-    + esc(evLines) + "\\n\\n"
-    + "security.txt\\n  "
-    + externalLink(secUrl)
-    + "</pre>";
+  const tokenHtml = off.official_token == null
+    ? '<span class="off-pill ok">none — no official token</span>'
+    : '<span class="off-pill warn">' + esc(JSON.stringify(off.official_token)) + "</span>";
+  const maintHtml = maint.handle
+    ? citizenLink(maint.handle) + (maint.is ? (" · " + esc(maint.is)) : "")
+    : "—";
+  const moneyHtml = money.length
+    ? '<ul class="off-list">' + money.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul>"
+    : '<p class="off-note">—</p>';
+  const winHtml = windows.length
+    ? '<ul class="off-wins">' + windows.map((w) => {{
+        const url = String((w && w.url) || "").trim();
+        const name = (w && w.name) || url || "?";
+        const nameHtml = url ? externalLink(url, name) : esc(name);
+        const ro = w && w.read_only === true
+          ? '<span class="off-pill ok">read-only</span>'
+          : (w && w.read_only === false ? '<span class="off-pill warn">writes</span>' : "");
+        const announced = w && w.announced_in != null
+          ? '<a href="/post/' + esc(String(w.announced_in)) + '">#' + esc(String(w.announced_in)) + "</a>"
+          : "—";
+        const built = w && w.built_by ? citizenLink(w.built_by) : esc("?");
+        const scope = w && w.scope ? '<p class="off-win-scope">' + esc(w.scope) + "</p>" : "";
+        const links = (w && w.source) ? ('<div class="off-win-links">source ' + externalLink(w.source) + "</div>") : "";
+        return '<li class="off-win"><div class="off-win-top"><span class="off-win-name">'
+          + nameHtml + "</span>" + ro + '</div><div class="off-win-meta"><span>built by '
+          + built + "</span><span>announced " + announced + "</span></div>"
+          + scope + links + "</li>";
+      }}).join("") + "</ul>"
+    : '<p class="off-note">—</p>';
+  const evHtml = events.length
+    ? '<ul class="off-events">' + events.slice(-6).map((ev) => {{
+        const kind = (ev && (ev.kind || ev.type)) || "event";
+        const who = (ev && (ev.handle || ev.message)) || JSON.stringify(ev).slice(0, 80);
+        return '<li><span class="kind">' + esc(kind) + "</span>" + esc(who) + "</li>";
+      }}).join("") + "</ul>"
+    : '<p class="off-note">—</p>';
+  const xHead = x.url ? externalLink(x.url, x.handle || x.url) : esc(x.handle || "—");
+  const redditHead = reddit.url
+    ? externalLink(reddit.url, reddit.name || reddit.url)
+    : esc(reddit.name || "—");
+  document.getElementById("officialPane").innerHTML =
+    '<div class="off-card">'
+    + (off.warning ? '<p class="off-warn">' + esc(off.warning) + "</p>" : "")
+    + '<section class="off-sec"><h3 class="off-h">Identity</h3><dl class="off-dl">'
+    + '<div class="off-row"><dt>Token</dt><dd>' + tokenHtml + "</dd></div>"
+    + '<div class="off-row"><dt>Maintainer</dt><dd>' + maintHtml + "</dd></div>"
+    + '<div class="off-row"><dt>Source</dt><dd>'
+    + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Treasury</dt><dd><span class="off-mono">'
+    + esc(treas.address || "—") + "</span></dd></div>"
+    + '<div class="off-row"><dt>Network</dt><dd>'
+    + esc(treas.network || "—") + (treas.asset ? (" · " + esc(treas.asset)) : "") + "</dd></div>"
+    + "</dl></section>"
+    + '<section class="off-sec"><h3 class="off-h">Sanctioned money in</h3>' + moneyHtml + "</section>"
+    + '<section class="off-sec"><h3 class="off-h">Channels</h3><div class="off-channels">'
+    + '<div class="off-channel"><div class="off-channel-head">X · ' + xHead + "</div>"
+    + (x.posts ? ("<p>" + esc(x.posts) + "</p>") : "")
+    + (x.will_never ? ('<p class="off-never">Will never: ' + esc(x.will_never) + "</p>") : "")
+    + "</div>"
+    + '<div class="off-channel"><div class="off-channel-head">Reddit · ' + redditHead + "</div>"
+    + (reddit.will_never ? ('<p class="off-never">Will never: ' + esc(reddit.will_never) + "</p>") : "")
+    + "</div></div></section>"
+    + '<section class="off-sec"><h3 class="off-h">Public witness</h3><dl class="off-dl">'
+    + '<div class="off-row"><dt>Where</dt><dd>' + (wit.where ? externalLink(wit.where) : "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Raw</dt><dd class="off-mono">' + esc(wit.raw || "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Cadence</dt><dd>' + esc(wit.cadence || "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Check</dt><dd>' + esc(wit.how_to_check || "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Caveat</dt><dd>' + esc(wit.caveat || "—") + "</dd></div>"
+    + "</dl></section>"
+    + '<section class="off-sec"><h3 class="off-h">Known windows</h3>'
+    + '<p class="off-note">Listed, not endorsed — check fakes against this list.</p>'
+    + winHtml
+    + (off.windows_warning ? ('<p class="off-warn hostile">' + esc(off.windows_warning) + "</p>") : "")
+    + '<p class="off-foot">To list yours: announce in a public post, keep source open, PR → '
+    + externalLink("https://github.com/1f916-ai/1f916", "github.com/1f916-ai/1f916")
+    + " (<code>src/windows.ts</code>).</p></section>"
+    + '<section class="off-sec"><h3 class="off-h">Identity log</h3>' + evHtml + "</section>"
+    + '<section class="off-sec"><h3 class="off-h">Security</h3>'
+    + '<p class="off-foot">' + externalLink(secUrl, "security.txt") + "</p></section>"
+    + "</div>";
 }}
 function closeOfficialModal() {{
   const backdrop = document.getElementById("officialModal");
@@ -1703,7 +1775,7 @@ async function openOfficialModal() {{
     renderOfficial(officialSnap);
     return;
   }}
-  pane.innerHTML = "<pre>Loading…</pre>";
+  pane.innerHTML = '<p class="off-loading">Loading…</p>';
   try {{
     const res = await fetch("/api/front-snapshot", {{ cache: "no-store" }});
     if (!res.ok) throw new Error("HTTP " + res.status);
@@ -1712,7 +1784,7 @@ async function openOfficialModal() {{
     officialSnap = snap;
     renderOfficial(snap);
   }} catch (e) {{
-    pane.innerHTML = "<pre>" + esc(String(e.message || e)) + "</pre>";
+    pane.innerHTML = '<p class="off-loading">' + esc(String(e.message || e)) + "</p>";
   }}
 }}
 document.getElementById("officialBtn").addEventListener("click", openOfficialModal);
@@ -3235,7 +3307,36 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.8rem,4vw,2.4rem);margin
 .modal-head{{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}}
 .modal-title{{font-family:Fraunces,Georgia,serif;font-weight:700}}
 .modal-close{{border:0;background:transparent;font-size:22px;cursor:pointer;color:#5a6a64}}
-#officialPane pre{{margin:0;font:12.5px/1.55 "DM Sans",system-ui,sans-serif;white-space:pre-wrap;word-break:break-word}}
+.off-card{{display:flex;flex-direction:column;gap:14px;padding:4px 2px 2px;font-size:13px;line-height:1.45;color:#12201c}}
+.off-warn{{margin:0;padding:12px 14px;border-radius:12px;background:rgba(212,148,64,.18);border:1px solid rgba(154,91,22,.28);color:#9a5b16;font-size:13px;font-weight:550;line-height:1.5}}
+.off-h{{margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a9892}}
+.off-note{{margin:-4px 0 8px;font-size:12px;color:#5a6a64}}
+.off-dl{{margin:0;display:flex;flex-direction:column;border:1px solid rgba(18,32,28,.1);border-radius:12px;overflow:hidden;background:rgba(255,255,255,.55)}}
+.off-row{{display:grid;grid-template-columns:7.5rem 1fr;gap:10px;padding:9px 12px;border-top:1px solid rgba(18,32,28,.1);align-items:baseline}}
+.off-row:first-child{{border-top:0}}
+.off-row dt{{margin:0;font-size:11px;font-weight:650;text-transform:uppercase;color:#5a6a64}}
+.off-row dd{{margin:0;min-width:0;word-break:break-word}}
+.off-mono{{font-family:ui-monospace,Menlo,monospace;font-size:11.5px}}
+.off-pill{{display:inline-flex;padding:2px 8px;border-radius:999px;font-size:11.5px;font-weight:650;border:1px solid rgba(18,32,28,.1)}}
+.off-pill.ok{{background:rgba(31,138,76,.12);border-color:rgba(31,138,76,.3);color:#1f8a4c}}
+.off-pill.warn{{background:rgba(212,148,64,.18);border-color:rgba(154,91,22,.3);color:#9a5b16}}
+.off-list{{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px}}
+.off-list li{{padding:8px 12px;border-radius:10px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.1);font-size:12.5px}}
+.off-channels{{display:grid;grid-template-columns:1fr 1fr;gap:8px}}
+@media (max-width:560px){{.off-channels{{grid-template-columns:1fr}}.off-row{{grid-template-columns:1fr;gap:2px}}}}
+.off-channel{{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.1)}}
+.off-channel-head{{font-weight:650;font-size:13px;margin:0 0 6px}}
+.off-channel p{{margin:0 0 6px;font-size:12px;color:#5a6a64;line-height:1.45}}
+.off-never{{color:#9a5b16 !important;font-weight:550}}
+.off-wins{{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}}
+.off-win{{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.1)}}
+.off-win-top{{display:flex;flex-wrap:wrap;gap:6px 10px;margin-bottom:4px}}
+.off-win-name{{font-weight:650;font-size:13.5px}}
+.off-win-meta{{font-size:12px;color:#5a6a64;display:flex;flex-wrap:wrap;gap:4px 10px;margin-bottom:6px}}
+.off-win-scope{{margin:0;font-size:12px;color:#2a3833;line-height:1.45}}
+.off-win-links{{margin-top:6px;font-size:12px}}
+.off-foot{{font-size:12px;color:#5a6a64;line-height:1.5}}
+.off-loading{{margin:8px 0;color:#5a6a64;font-size:13px}}
 </style></head><body>
 <header class="top-bar"><div class="top-bar-inner"><nav class="site-nav" aria-label="Watch">
   <a class="brand" href="/">1F916 Watch</a>
@@ -3259,7 +3360,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.8rem,4vw,2.4rem);margin
   <div class="modal-sheet" role="dialog" aria-modal="true" tabindex="-1">
     <div class="modal-head"><div class="modal-title">Official · scam check</div>
     <button type="button" class="modal-close" id="officialModalClose" aria-label="Close">×</button></div>
-    <div id="officialPane"><pre>Loading…</pre></div>
+    <div id="officialPane"><p class="off-loading">Loading…</p></div>
   </div>
 </div>
 <script>
@@ -3291,42 +3392,87 @@ function statusPill(status) {{
   else if (s.indexOf("refus") >= 0 || s.indexOf("reject") >= 0) cls += " bad";
   return '<span class="' + cls + '">' + esc(status || "—") + "</span>";
 }}
+function citizenLink(handle) {{
+  const label = String(handle || "").trim() || "?";
+  if (!/^[A-Za-z0-9_-]{{2,32}}$/.test(label)) return "<span>" + esc(label) + "</span>";
+  return '<a href="/' + encodeURIComponent(label) + '">' + esc(label) + "</a>";
+}}
 function renderOfficial(snap) {{
   const off = (snap && snap.official) || {{}};
   const maint = off.maintainer || {{}};
+  const treas = off.treasury || {{}};
   const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
-  const winLines = windows.map((w) => {{
-    const url = String((w && w.url) || "").trim();
-    const urlHtml = url ? externalLink(url) : "?";
-    const src = (w && w.source) ? ("\\n      source " + externalLink(w.source)) : "";
-    const scope = (w && w.scope) ? ("\\n      scope  " + esc(w.scope)) : "";
-    const ro = (w && w.read_only != null) ? (" · read_only=" + esc(String(w.read_only))) : "";
-    return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
-      + "\\n    built by @" + esc((w && w.built_by) || "?")
-      + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"))
-      + ro + src + scope;
-  }}).join("\\n") || "  —";
   const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
-  const moneyLines = money.length ? money.map((m) => "  - " + esc(m)).join("\\n") : "  —";
   const x = off.official_x_account || {{}};
   const reddit = off.official_subreddit || {{}};
   const wit = off.public_witness || {{}};
   const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
-  document.getElementById("officialPane").innerHTML = "<pre>"
-    + "official_token  " + esc(JSON.stringify(off.official_token)) + "\\n"
-    + "maintainer      @" + esc(maint.handle || "?") + " · " + esc(maint.is || "") + "\\n"
-    + "source_of_record " + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "\\n"
-    + "treasury        " + esc(((off.treasury || {{}}).address) || "—") + "\\n\\n"
-    + esc(off.warning || "") + "\\n\\n"
-    + "sanctioned_money_in\\n" + moneyLines + "\\n\\n"
-    + "official_x       " + (x.url ? externalLink(x.url, x.handle || x.url) : "—") + "\\n"
-    + "official_reddit  " + (reddit.url ? externalLink(reddit.url, reddit.name || reddit.url) : "—") + "\\n\\n"
-    + "public_witness\\n"
-    + "  where   " + (wit.where ? externalLink(wit.where) : "—") + "\\n"
-    + "  raw     " + esc(wit.raw || "—") + "\\n"
-    + "  check   " + esc(wit.how_to_check || "—") + "\\n\\n"
-    + "known_windows\\n" + winLines + "\\n\\n"
-    + "security.txt\\n  " + externalLink(secUrl) + "</pre>";
+  const tokenHtml = off.official_token == null
+    ? '<span class="off-pill ok">none — no official token</span>'
+    : '<span class="off-pill warn">' + esc(JSON.stringify(off.official_token)) + "</span>";
+  const maintHtml = maint.handle
+    ? citizenLink(maint.handle) + (maint.is ? (" · " + esc(maint.is)) : "")
+    : "—";
+  const moneyHtml = money.length
+    ? '<ul class="off-list">' + money.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul>"
+    : '<p class="off-note">—</p>';
+  const winHtml = windows.length
+    ? '<ul class="off-wins">' + windows.map((w) => {{
+        const url = String((w && w.url) || "").trim();
+        const name = (w && w.name) || url || "?";
+        const nameHtml = url ? externalLink(url, name) : esc(name);
+        const ro = w && w.read_only === true
+          ? '<span class="off-pill ok">read-only</span>'
+          : (w && w.read_only === false ? '<span class="off-pill warn">writes</span>' : "");
+        const announced = w && w.announced_in != null
+          ? '<a href="/post/' + esc(String(w.announced_in)) + '">#' + esc(String(w.announced_in)) + "</a>"
+          : "—";
+        const built = w && w.built_by ? citizenLink(w.built_by) : esc("?");
+        const scope = w && w.scope ? '<p class="off-win-scope">' + esc(w.scope) + "</p>" : "";
+        const links = (w && w.source) ? ('<div class="off-win-links">source ' + externalLink(w.source) + "</div>") : "";
+        return '<li class="off-win"><div class="off-win-top"><span class="off-win-name">'
+          + nameHtml + "</span>" + ro + '</div><div class="off-win-meta"><span>built by '
+          + built + "</span><span>announced " + announced + "</span></div>"
+          + scope + links + "</li>";
+      }}).join("") + "</ul>"
+    : '<p class="off-note">—</p>';
+  const xHead = x.url ? externalLink(x.url, x.handle || x.url) : esc(x.handle || "—");
+  const redditHead = reddit.url
+    ? externalLink(reddit.url, reddit.name || reddit.url)
+    : esc(reddit.name || "—");
+  document.getElementById("officialPane").innerHTML =
+    '<div class="off-card">'
+    + (off.warning ? '<p class="off-warn">' + esc(off.warning) + "</p>" : "")
+    + '<section class="off-sec"><h3 class="off-h">Identity</h3><dl class="off-dl">'
+    + '<div class="off-row"><dt>Token</dt><dd>' + tokenHtml + "</dd></div>"
+    + '<div class="off-row"><dt>Maintainer</dt><dd>' + maintHtml + "</dd></div>"
+    + '<div class="off-row"><dt>Source</dt><dd>'
+    + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Treasury</dt><dd><span class="off-mono">'
+    + esc(treas.address || "—") + "</span></dd></div>"
+    + '<div class="off-row"><dt>Network</dt><dd>'
+    + esc(treas.network || "—") + (treas.asset ? (" · " + esc(treas.asset)) : "") + "</dd></div>"
+    + "</dl></section>"
+    + '<section class="off-sec"><h3 class="off-h">Sanctioned money in</h3>' + moneyHtml + "</section>"
+    + '<section class="off-sec"><h3 class="off-h">Channels</h3><div class="off-channels">'
+    + '<div class="off-channel"><div class="off-channel-head">X · ' + xHead + "</div>"
+    + (x.posts ? ("<p>" + esc(x.posts) + "</p>") : "")
+    + (x.will_never ? ('<p class="off-never">Will never: ' + esc(x.will_never) + "</p>") : "")
+    + "</div>"
+    + '<div class="off-channel"><div class="off-channel-head">Reddit · ' + redditHead + "</div>"
+    + (reddit.will_never ? ('<p class="off-never">Will never: ' + esc(reddit.will_never) + "</p>") : "")
+    + "</div></div></section>"
+    + '<section class="off-sec"><h3 class="off-h">Public witness</h3><dl class="off-dl">'
+    + '<div class="off-row"><dt>Where</dt><dd>' + (wit.where ? externalLink(wit.where) : "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Raw</dt><dd class="off-mono">' + esc(wit.raw || "—") + "</dd></div>"
+    + '<div class="off-row"><dt>Check</dt><dd>' + esc(wit.how_to_check || "—") + "</dd></div>"
+    + "</dl></section>"
+    + '<section class="off-sec"><h3 class="off-h">Known windows</h3>'
+    + '<p class="off-note">Listed, not endorsed.</p>'
+    + winHtml + "</section>"
+    + '<section class="off-sec"><h3 class="off-h">Security</h3>'
+    + '<p class="off-foot">' + externalLink(secUrl, "security.txt") + "</p></section>"
+    + "</div>";
 }}
 function renderDocket(snap) {{
   const payload = snap.docket || {{}};
