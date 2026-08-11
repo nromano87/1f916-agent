@@ -1708,9 +1708,39 @@
 
   <script>
     const $ = (id) => document.getElementById(id);
-    /** Expanded keys survive refresh so Mine posts stay open while polling. */
-    const expanded = new Set(JSON.parse(sessionStorage.getItem("f916-expanded") || "[]"));
     const FRONT_ONLY = document.documentElement.dataset.page === "front";
+    /**
+     * Dual-write UI prefs: sessionStorage for same-tab refresh, localStorage so
+     * "Back to Watch" from a post tab (posts open in a new tab) can restore
+     * tabs / filters / expanded rows. session wins when present.
+     */
+    function uiStoreGet(key) {
+      try {
+        const s = sessionStorage.getItem(key);
+        if (s != null) return s;
+      } catch (_) {}
+      try {
+        return localStorage.getItem(key);
+      } catch (_) {
+        return null;
+      }
+    }
+    function uiStoreSet(key, value) {
+      try { sessionStorage.setItem(key, value); } catch (_) {}
+      try { localStorage.setItem(key, value); } catch (_) {}
+    }
+    function uiStoreJson(key, fallback) {
+      try {
+        const raw = uiStoreGet(key);
+        if (raw == null || raw === "") return fallback;
+        const v = JSON.parse(raw);
+        return v == null ? fallback : v;
+      } catch (_) {
+        return fallback;
+      }
+    }
+    /** Expanded keys survive refresh so Mine posts stay open while polling. */
+    const expanded = new Set(uiStoreJson("f916-expanded", []));
     (function markSiteNav() {
       const key = FRONT_ONLY ? "front" : "citizen";
       document.querySelectorAll(".site-nav [data-nav]").forEach((el) => {
@@ -1747,23 +1777,23 @@
         if (window.matchMedia("(min-width: 961px)").matches) setOpen(false);
       });
     })();
-    let activeTab = sessionStorage.getItem("f916-tab") || "mine";
+    let activeTab = uiStoreGet("f916-tab") || "mine";
     if (activeTab === "feed" || !["mine", "karma", "likes", "inbox"].includes(activeTab)) {
       activeTab = "mine";
     }
     /** Mine sub-filter: comments | posts | all — default all so posts aren't hidden. */
-    let mineFilter = sessionStorage.getItem("f916-mine-filter-v2") || "all";
+    let mineFilter = uiStoreGet("f916-mine-filter-v2") || "all";
     /** Front kind: posts | comments. */
-    let feedIncludeTags = JSON.parse(sessionStorage.getItem("f916-feed-tags") || "[]");
-    let feedExcludeTags = JSON.parse(sessionStorage.getItem("f916-feed-exclude") || "[]");
+    let feedIncludeTags = uiStoreJson("f916-feed-tags", []);
+    let feedExcludeTags = uiStoreJson("f916-feed-exclude", []);
     if (!Array.isArray(feedIncludeTags)) feedIncludeTags = [];
     if (!Array.isArray(feedExcludeTags)) feedExcludeTags = [];
     feedIncludeTags = feedIncludeTags.map(String).filter(Boolean).slice(0, 8);
     feedExcludeTags = feedExcludeTags.map(String).filter(Boolean).slice(0, 8);
-    let feedKind = sessionStorage.getItem("f916-feed-kind") || "posts";
+    let feedKind = uiStoreGet("f916-feed-kind") || "posts";
     if (feedKind !== "posts" && feedKind !== "comments") feedKind = "posts";
     /** Front sort: hot | votes | new | flagged. */
-    let feedSort = sessionStorage.getItem("f916-feed-sort") || "hot";
+    let feedSort = uiStoreGet("f916-feed-sort") || "hot";
     if (
       feedSort !== "hot"
       && feedSort !== "votes"
@@ -1773,7 +1803,7 @@
       feedSort = "hot";
     }
     /** Inbox filter: all | on_post | on_comment */
-    let inboxFilter = sessionStorage.getItem("f916-inbox-filter") || "all";
+    let inboxFilter = uiStoreGet("f916-inbox-filter") || "all";
     let lastSnap = null;
     let lastSnapFp = "";
     let lastPaintAt = 0;
@@ -1787,6 +1817,8 @@
       "engagePane", "journalPane", "voicePane", "attestPane",
       "officialPane", "schedulePane",
     ];
+    /** Scroll snapshot applied once after the first real paint (Back to Watch). */
+    let pendingScrollRestore = null;
 
     /** Stable fingerprint — ignores generated_at so quiet polls don't rebuild the DOM. */
     function snapFingerprint(snap) {
@@ -1837,6 +1869,50 @@
         if (el && m[id] != null) el.scrollTop = m[id];
       }
       if (m.windowY != null) window.scrollTo(0, m.windowY);
+    }
+
+    function scrollStateKey() {
+      if (FRONT_ONLY) return "f916-scroll:front";
+      const h = pathHandle() || "_";
+      return `f916-scroll:${String(h).toLowerCase()}`;
+    }
+
+    function persistScrolls(m) {
+      try {
+        localStorage.setItem(scrollStateKey(), JSON.stringify(m || captureScrolls()));
+      } catch (_) {}
+    }
+
+    function readPersistedScrolls() {
+      try {
+        const raw = localStorage.getItem(scrollStateKey());
+        if (!raw) return null;
+        const m = JSON.parse(raw);
+        return m && typeof m === "object" ? m : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function persistWatchReturnState() {
+      persistScrolls(captureScrolls());
+      uiStoreSet("f916-expanded", JSON.stringify([...expanded]));
+      uiStoreSet("f916-tab", activeTab);
+      uiStoreSet("f916-mine-filter-v2", mineFilter);
+      uiStoreSet("f916-feed-kind", feedKind);
+      uiStoreSet("f916-feed-sort", feedSort);
+      uiStoreSet("f916-feed-tags", JSON.stringify(feedIncludeTags));
+      uiStoreSet("f916-feed-exclude", JSON.stringify(feedExcludeTags));
+      uiStoreSet("f916-inbox-filter", inboxFilter);
+    }
+
+    function applyPendingScrolls() {
+      const m = pendingScrollRestore;
+      if (!m) return;
+      pendingScrollRestore = null;
+      restoreScrolls(m);
+      // Layout can settle after fonts/images; nudge once more.
+      requestAnimationFrame(() => restoreScrolls(m));
     }
 
     function prefersReducedMotion() {
@@ -2007,6 +2083,8 @@
     }
     const VIEW_HANDLE = pathHandle();
     const PUBLIC_MODE = !!VIEW_HANDLE;
+    try { history.scrollRestoration = "manual"; } catch (_) {}
+    pendingScrollRestore = readPersistedScrolls();
 
     function snapshotUrl() {
       if (FRONT_ONLY) {
@@ -2074,7 +2152,7 @@
     }
 
     function persistExpanded() {
-      sessionStorage.setItem("f916-expanded", JSON.stringify([...expanded]));
+      uiStoreSet("f916-expanded", JSON.stringify([...expanded]));
     }
 
     function esc(s) {
@@ -2276,13 +2354,28 @@
       return `/post/${esc(id)}${postFromQuery()}${frag}`;
     }
 
+    /** Desktop keeps posts in a new tab; mobile stays in-place for Back to Watch. */
+    function prefersNewPostTab() {
+      try {
+        if (window.matchMedia("(max-width: 960px)").matches) return false;
+        if (window.matchMedia("(hover: none)").matches) return false;
+        return true;
+      } catch (_) {
+        return true;
+      }
+    }
+
+    function postLinkAttrs() {
+      return prefersNewPostTab() ? ' target="_blank" rel="noreferrer"' : "";
+    }
+
     /** Post # chip → local readable thread (/post/ID), keeping the current citizen for Back. */
     function postChip(id, { cls = "", label = null } = {}) {
       if (id == null || id === "" || id === "?") {
         return `<span class="tag ${cls}">${esc(label || "#?")}</span>`;
       }
       const text = label || `#${id}`;
-      return `<a class="tag ${cls}" href="${postHref(id)}" target="_blank" rel="noreferrer" title="Open post #${esc(id)}">${esc(text)}</a>`;
+      return `<a class="tag ${cls}" href="${postHref(id)}"${postLinkAttrs()} title="Open post #${esc(id)}">${esc(text)}</a>`;
     }
 
     /** Comment # chip → thread at the comment anchor (/post/POST#c-ID). */
@@ -2292,7 +2385,7 @@
       if (!href || commentId == null || commentId === "" || commentId === "?") {
         return `<span class="tag ${cls}">${esc(text)}</span>`;
       }
-      return `<a class="tag ${cls}" href="${href}" target="_blank" rel="noreferrer" title="Open comment #${esc(commentId)}">${esc(text)}</a>`;
+      return `<a class="tag ${cls}" href="${href}"${postLinkAttrs()} title="Open comment #${esc(commentId)}">${esc(text)}</a>`;
     }
 
     function parseTime(msOrIso) {
@@ -2492,7 +2585,7 @@
       const likesAvailable = Array.isArray(lastSnap && lastSnap.likes);
       if (name === "likes" && !likesAvailable) name = "karma";
       activeTab = name;
-      sessionStorage.setItem("f916-tab", name);
+      uiStoreSet("f916-tab", name);
       document.querySelectorAll("#mainTabs button").forEach((b) => {
         b.classList.toggle("active", b.dataset.tab === name);
       });
@@ -2519,7 +2612,7 @@
           const next = btn.getAttribute("data-feed-kind") || "posts";
           if (next === feedKind) return;
           feedKind = next;
-          sessionStorage.setItem("f916-feed-kind", feedKind);
+          uiStoreSet("f916-feed-kind", feedKind);
           if (FRONT_ONLY) {
             $("subtitle").textContent = frontSubtitle();
           }
@@ -2931,7 +3024,7 @@
             const title = highlightMentions(esc(p.title || "untitled"), viewedHandle(snap));
             const href = postHref(p.id);
             return href
-              ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="Open post #${esc(p.id)}">${title}</a>`
+              ? `<a class="title-link" href="${href}"${postLinkAttrs()} title="Open post #${esc(p.id)}">${title}</a>`
               : `<h3 class="title">${title}</h3>`;
           })()}
           ${bodyHtml}
@@ -3054,7 +3147,7 @@
       seg.querySelectorAll("[data-feed-sort]").forEach((btn) => {
         btn.addEventListener("click", () => {
           feedSort = btn.getAttribute("data-feed-sort") || "hot";
-          sessionStorage.setItem("f916-feed-sort", feedSort);
+          uiStoreSet("f916-feed-sort", feedSort);
           if (lastSnap) renderFeed(lastSnap);
         });
       });
@@ -3134,7 +3227,7 @@
           ? postHref(v.target_id || v.post_id)
           : postHref(v.post_id, { hash: `c-${v.target_id}` });
         const titleHtml = href
-          ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="${isPost ? `Open post #${esc(v.target_id)}` : `Open comment #${esc(v.target_id)}`}">${highlightMentions(esc(headline))}</a>`
+          ? `<a class="title-link" href="${href}"${postLinkAttrs()} title="${isPost ? `Open post #${esc(v.target_id)}` : `Open comment #${esc(v.target_id)}`}">${highlightMentions(esc(headline))}</a>`
           : `<h3 class="title" style="font-size:1.05rem">${highlightMentions(esc(headline))}</h3>`;
         return `
           <article class="row-item">
@@ -3217,8 +3310,8 @@
     }
 
     function saveFeedTagFilters() {
-      sessionStorage.setItem("f916-feed-tags", JSON.stringify(feedIncludeTags));
-      sessionStorage.setItem("f916-feed-exclude", JSON.stringify(feedExcludeTags));
+      uiStoreSet("f916-feed-tags", JSON.stringify(feedIncludeTags));
+      uiStoreSet("f916-feed-exclude", JSON.stringify(feedExcludeTags));
     }
 
     function toggleFeedTag(tag, { exclude = false } = {}) {
@@ -3374,7 +3467,7 @@
           : `Comment on #${c.post_id}`);
       const href = postHref(c.post_id, { hash: `c-${c.id}` });
       const titleHtml = href
-        ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="Open comment #${esc(c.id)}" style="font-size:1.05rem;margin:6px 0 0">${highlightMentions(esc(headline))}</a>`
+        ? `<a class="title-link" href="${href}"${postLinkAttrs()} title="Open comment #${esc(c.id)}" style="font-size:1.05rem;margin:6px 0 0">${highlightMentions(esc(headline))}</a>`
         : `<div class="title" style="font-size:1.05rem;margin:6px 0 0">${highlightMentions(esc(headline))}</div>`;
       const previewSource = showMod
         ? ((mod && mod.reason) || c.mod_state || "moderated")
@@ -3474,7 +3567,7 @@
           seg.querySelectorAll("[data-mine-filter]").forEach((btn) => {
             btn.addEventListener("click", () => {
               mineFilter = btn.getAttribute("data-mine-filter") || "all";
-              sessionStorage.setItem("f916-mine-filter-v2", mineFilter);
+              uiStoreSet("f916-mine-filter-v2", mineFilter);
               if (lastSnap) renderMine(lastSnap);
             });
           });
@@ -3559,7 +3652,7 @@
               ? `Open post #${esc(r.post_id)}`
               : `Open comment #${esc(commentId)}`;
             const titleHtml = href
-              ? `<a class="title-link" href="${href}" target="_blank" rel="noreferrer" title="${openTitle}">${highlightMentions(esc(headline))}</a>`
+              ? `<a class="title-link" href="${href}"${postLinkAttrs()} title="${openTitle}">${highlightMentions(esc(headline))}</a>`
               : `<h3 class="title" style="font-size:1.05rem">${highlightMentions(esc(headline))}</h3>`;
             return `
               <article class="row-item">
@@ -3599,7 +3692,7 @@
           seg.querySelectorAll("[data-inbox-filter]").forEach((b) => {
             b.addEventListener("click", () => {
               inboxFilter = b.getAttribute("data-inbox-filter") || "all";
-              sessionStorage.setItem("f916-inbox-filter", inboxFilter);
+              uiStoreSet("f916-inbox-filter", inboxFilter);
               if (lastSnap) renderInbox(lastSnap);
             });
           });
@@ -3925,6 +4018,7 @@ security.txt
               `Society front page · <a href="/treasury">Treasury</a> · <a href="/citizens">Browse citizens</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
           }
           restoreScrolls(scrolls);
+          applyPendingScrolls();
           document.body.classList.add("is-settled");
           return;
         }
@@ -3978,6 +4072,7 @@ security.txt
             : `Operator view for <code>${esc((snap.identity || {}).handle || VIEW_HANDLE)}</code> — Engage, Voice, Reasoning, and Attest stay on this machine (the custody story). Switch citizens via <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="/treasury">Treasury</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
         }
         restoreScrolls(scrolls);
+        applyPendingScrolls();
         document.body.classList.add("is-settled");
       } catch (err) {
         if (gen !== loadGen) return;
@@ -4085,6 +4180,18 @@ security.txt
 
     paintLoadingSkeletons();
     paintSpendReset();
+    // Snapshot tabs/scroll before opening a post (new tab) or leaving Watch.
+    document.addEventListener("click", (e) => {
+      const a = e.target.closest("a[href]");
+      if (!a) return;
+      const href = a.getAttribute("href") || "";
+      if (!href.startsWith("/post/")) return;
+      persistWatchReturnState();
+    }, true);
+    window.addEventListener("pagehide", persistWatchReturnState);
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") persistWatchReturnState();
+    });
     load(false);
     if (FRONT_ONLY || wantsNoCount()) {
       bumpHitCounter({ skipBump: wantsNoCount() });
