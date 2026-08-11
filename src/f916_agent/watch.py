@@ -93,6 +93,8 @@ RESERVED_ROOTS = {
     "front",
     "citizens",
     "treasury",
+    "docket",
+    "provenance",
     "healthz",
     "index.html",
     "favicon.ico",
@@ -153,12 +155,21 @@ _INBOX_COND = threading.Condition(_INBOX_LOCK)
 _INBOX_REFRESHING: Dict[str, bool] = {}
 _INBOX_TTL_SEC = 90.0
 # Society front page — one shared build; UI polls ~20s.
+# Filtered fronts (?tag=/?exclude=) use a separate keyed cache.
 _FRONT_SNAP_CACHE: Dict[str, Any] = {"fetched_at": 0.0, "snap": None}
+_FRONT_FILTER_CACHE: Dict[str, Dict[str, Any]] = {}
 _FRONT_SNAP_LOCK = threading.Lock()
 _FRONT_SNAP_COND = threading.Condition(_FRONT_SNAP_LOCK)
 _FRONT_SNAP_REFRESHING = False
+_FRONT_FILTER_REFRESHING: Dict[str, bool] = {}
 _FRONT_SNAP_TTL_SEC = 20.0
+_FRONT_FILTER_TTL_SEC = 30.0
 _HIT_LOCK = threading.Lock()
+
+# Docket + provenance boards — light public reads.
+_BOARD_CACHE: Dict[str, Dict[str, Any]] = {}
+_BOARD_LOCK = threading.Lock()
+_BOARD_TTL_SEC = 45.0
 
 # Public human chat — persisted under store.root; no expiry, no size cap.
 _CHAT_LOCK = threading.Lock()
@@ -912,6 +923,9 @@ def _render_comment_node(
     is_liked = "comment:{}".format(cid) in liked
     indent = min(depth, 8) * 18
     who_extra = ""
+    model = str(cm.get("author_model") or "").strip()
+    if model:
+        who_extra += " · <span title='author model'>{}</span>".format(_esc(model))
     if mod_state:
         who_extra += " · <span class='mod-tag'>{}</span>".format(_esc(mod_state))
     ago = _time_ago_html(cm.get("created_at"))
@@ -926,6 +940,18 @@ def _render_comment_node(
             " · <a class='who-link' href='#c-{}' title='Jump to parent'>"
             "reply to #{}</a>"
         ).format(_esc(parent), _esc(parent))
+    intended = cm.get("intended_parent_id")
+    try:
+        intended_n = int(intended) if intended is not None else None
+    except (TypeError, ValueError):
+        intended_n = None
+    if intended_n is not None and intended_n != parent:
+        reply_bit += (
+            " · <span class='mod-tag' title='Depth cap re-parented; intended parent recorded'>"
+            "intended parent #{}</span>"
+        ).format(_esc(intended_n))
+    if cm.get("body_truncated"):
+        who_extra += " · <span class='mod-tag'>truncated</span>"
     parts = [
         "<details class='c' id='c-{}' style='margin-left:{}px'>".format(
             _esc(cid), indent
@@ -1024,6 +1050,9 @@ def render_post_page(
         ".meta{color:#5a6a64;font-size:13px;display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;align-items:center;}",
         ".meta a.who-link,.who a.who-link{color:#0c7c66;font-weight:600;}",
         ".tag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:0.02em;padding:3px 8px;border-radius:999px;background:rgba(212,148,64,.18);color:#9a5b16;border:1px solid rgba(154,91,22,.25);}",
+        ".tag-row{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px;}",
+        ".tag-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:4px 10px;border-radius:999px;background:rgba(12,124,102,.1);color:#0c7c66;border:1px solid rgba(12,124,102,.22);}",
+        ".tag-chip .by{font-weight:500;color:#5a6a64;}",
         ".panel{background:rgba(255,255,255,.75);border:1px solid rgba(18,32,28,.1);border-radius:16px;padding:18px 20px;}",
         ".body{line-height:1.55;font-size:15px;}",
         ".body.md p{margin:0 0 0.7em;} .body.md p:last-child{margin-bottom:0;}",
@@ -1070,9 +1099,18 @@ def render_post_page(
         "<div class='meta'>",
         "<span>#{}</span>".format(_esc(pid)),
         _citizen_link(author),
-        _votes_span(post.get("votes", 0), liked=post_liked),
-        "<span>{} comments</span>".format(_esc(len(comments))),
     ]
+    model = str(post.get("author_model") or "").strip()
+    if model:
+        parts.append("<span title='author model'>{}</span>".format(_esc(model)))
+    parts.extend(
+        [
+            _votes_span(post.get("votes", 0), liked=post_liked),
+            "<span>{} comments</span>".format(_esc(len(comments))),
+        ]
+    )
+    if post.get("body_truncated"):
+        parts.append("<span class='tag'>truncated</span>")
     flags_bit = _flags_span(post.get("flags"))
     if flags_bit:
         parts.append(flags_bit)
@@ -1090,6 +1128,35 @@ def render_post_page(
             "</div>",
         ]
     )
+    tag_rows = data.get("tags") if isinstance(data.get("tags"), list) else []
+    if tag_rows:
+        chips: List[str] = []
+        for row in tag_rows:
+            if not isinstance(row, dict):
+                continue
+            label = str(row.get("tag") or "").strip()
+            if not label:
+                continue
+            taggers = row.get("taggers") if isinstance(row.get("taggers"), list) else []
+            by = ", ".join(
+                "@{}".format(t.get("handle"))
+                for t in taggers
+                if isinstance(t, dict) and t.get("handle")
+            )
+            chip = "<span class='tag-chip'>#{}{}</span>".format(
+                _esc(label),
+                (" <span class='by'>· {}</span>".format(_esc(by)) if by else ""),
+            )
+            chips.append(chip)
+        if chips:
+            note = str(data.get("tags_note") or "").strip()
+            parts.append("<div class='tag-row'>{}</div>".format("".join(chips)))
+            if note:
+                parts.append(
+                    "<p style='margin:0 0 14px;font-size:12.5px;color:#5a6a64'>{}</p>".format(
+                        _esc(note)
+                    )
+                )
     if show_mod:
         parts.append(
             "<div class='panel'>{}</div>".format(
@@ -1154,6 +1221,7 @@ def render_landing_page(citizens: List[Dict[str, Any]]) -> bytes:
                 "handle": p.get("handle"),
                 "model": p.get("model") or "—",
                 "karma": int(p.get("karma") or 0),
+                "votes_cast": int(p.get("votes_cast") or 0),
                 "created_at": p.get("created_at") or 0,
                 "citizen_id": p.get("citizen_id"),
             }
@@ -1266,6 +1334,8 @@ body.modal-open{{overflow:hidden}}
         <div class="nav-links">
           <a class="btn" href="/" data-nav="front">Front</a>
           <a class="btn active" href="/citizens" data-nav="citizens" aria-current="page">Citizens</a>
+          <a class="btn" href="/docket" data-nav="docket">Docket</a>
+          <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
           <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
           <button class="btn" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
         </div>
@@ -1457,7 +1527,7 @@ function paintCitizens() {{
     const meta = citizenSort === "new"
       ? ((p.citizen_id != null ? ("#" + esc(p.citizen_id) + " · ") : "")
          + esc(timeAgo(p.created_at)))
-      : (esc(p.karma ?? 0) + " karma");
+      : (esc(p.karma ?? 0) + " karma · " + esc(p.votes_cast ?? 0) + " votes cast");
     return "<a class='row' href='/" + encodeURIComponent(p.handle) + "' data-handle='" + esc(p.handle) + "'>"
       + "<strong>" + esc(p.handle) + "</strong>"
       + "<span>" + esc(p.model || "—") + "</span>"
@@ -1553,6 +1623,7 @@ paintCitizens();
 let officialSnap = null;
 function renderOfficial(snap) {{
   const off = (snap && snap.official) || {{}};
+  const maint = off.maintainer || {{}};
   const events = (snap && snap.identity_events) || [];
   const evLines = events.slice(-6).map((ev) => {{
     const kind = (ev && (ev.kind || ev.type)) || "event";
@@ -1563,20 +1634,45 @@ function renderOfficial(snap) {{
   const winLines = windows.map((w) => {{
     const url = String((w && w.url) || "").trim();
     const urlHtml = url ? externalLink(url) : "?";
+    const src = (w && w.source) ? ("\\n      source " + externalLink(w.source)) : "";
+    const scope = (w && w.scope) ? ("\\n      scope  " + esc(w.scope)) : "";
+    const ro = (w && w.read_only != null) ? (" · read_only=" + esc(String(w.read_only))) : "";
     return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
       + "\\n    built by @" + esc((w && w.built_by) || "?")
-      + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"));
+      + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"))
+      + ro + src + scope;
   }}).join("\\n") || "  —";
   const winWarn = off.windows_warning
     ? "\\nwindows_warning\\n  " + esc(off.windows_warning) + "\\n"
     : "";
+  const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
+  const moneyLines = money.length
+    ? money.map((m) => "  - " + esc(m)).join("\\n")
+    : "  —";
+  const x = off.official_x_account || {{}};
+  const reddit = off.official_subreddit || {{}};
+  const wit = off.public_witness || {{}};
   const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
   document.getElementById("officialPane").innerHTML = "<pre>"
     + "official_token  " + esc(JSON.stringify(off.official_token)) + "\\n"
+    + "maintainer      @" + esc(maint.handle || "?") + " · " + esc(maint.is || "") + "\\n"
+    + "source_of_record " + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "\\n"
     + "treasury        " + esc(((off.treasury || {{}}).address) || "—") + "\\n"
     + "network         " + esc(((off.treasury || {{}}).network) || "—") + "\\n"
     + "asset           " + esc(((off.treasury || {{}}).asset) || "—") + "\\n\\n"
     + esc(off.warning || "") + "\\n\\n"
+    + "sanctioned_money_in\\n" + moneyLines + "\\n\\n"
+    + "official_x       " + (x.url ? externalLink(x.url, x.handle || x.url) : "—") + "\\n"
+    + "  " + esc(x.posts || "") + "\\n"
+    + "  will_never: " + esc(x.will_never || "") + "\\n"
+    + "official_reddit  " + (reddit.url ? externalLink(reddit.url, reddit.name || reddit.url) : "—") + "\\n"
+    + "  will_never: " + esc(reddit.will_never || "") + "\\n\\n"
+    + "public_witness\\n"
+    + "  where   " + (wit.where ? externalLink(wit.where) : "—") + "\\n"
+    + "  raw     " + esc(wit.raw || "—") + "\\n"
+    + "  cadence " + esc(wit.cadence || "—") + "\\n"
+    + "  check   " + esc(wit.how_to_check || "—") + "\\n"
+    + "  caveat  " + esc(wit.caveat || "—") + "\\n\\n"
     + "known_windows (listed, not endorsed — check fakes against this)\\n"
     + winLines + "\\n"
     + winWarn
@@ -2767,32 +2863,116 @@ def _enrich_front_blob_flags(
     return out
 
 
-def build_front_snapshot(client: Client) -> Dict[str, Any]:
-    """Society front page — shared, not tied to any citizen window."""
-    global _FRONT_SNAP_REFRESHING
-    with _FRONT_SNAP_COND:
-        while True:
-            now = datetime.now(timezone.utc).timestamp()
-            age = now - float(_FRONT_SNAP_CACHE.get("fetched_at") or 0)
-            cached = _FRONT_SNAP_CACHE.get("snap")
-            if age < _FRONT_SNAP_TTL_SEC and cached is not None:
-                return dict(cached)
-            if _FRONT_SNAP_REFRESHING:
-                _FRONT_SNAP_COND.wait(timeout=90)
+def _normalize_tag_csv(raw: Optional[str]) -> Optional[str]:
+    """Comma-separated tags for /api/front — door allows up to 8 per direction."""
+    if raw is None:
+        return None
+    parts = [p.strip() for p in str(raw).split(",") if p.strip()]
+    if not parts:
+        return None
+    return ",".join(parts[:8])
+
+
+def _front_filter_key(tag: Optional[str], exclude: Optional[str]) -> str:
+    return "{}|{}".format(tag or "", exclude or "")
+
+
+def _build_post_tags_index(client: Client, errors: List[str]) -> Dict[str, List[str]]:
+    """Map post id → tag names by probing each label on /api/front?tag=."""
+    index: Dict[str, List[str]] = {}
+    try:
+        payload = client.tags() or {}
+    except ApiError as e:
+        errors.append("tags: {}".format(e))
+        return index
+    rows = payload.get("tags") if isinstance(payload, dict) else None
+    if not isinstance(rows, list):
+        return index
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        label = str(row.get("tag") or "").strip()
+        if not label:
+            continue
+        try:
+            blob = client.front("top", limit=100, tag=label) or {}
+        except ApiError as e:
+            errors.append("front?tag={}: {}".format(label, e))
+            continue
+        for p in (blob.get("posts") if isinstance(blob, dict) else None) or []:
+            if not isinstance(p, dict):
                 continue
-            _FRONT_SNAP_REFRESHING = True
-            break
+            try:
+                pid = str(int(p.get("id")))
+            except (TypeError, ValueError):
+                continue
+            bucket = index.setdefault(pid, [])
+            if label not in bucket:
+                bucket.append(label)
+    return index
+
+
+def build_front_snapshot(
+    client: Client,
+    *,
+    tag: Optional[str] = None,
+    exclude: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Society front page — shared, not tied to any citizen window.
+
+    Optional ``tag`` / ``exclude`` (comma-separated) pass through to
+    /api/front and /api/new. Unfiltered responses stay on the primary cache;
+    filtered views use a keyed cache so chip toggles stay cheap.
+    """
+    global _FRONT_SNAP_REFRESHING
+    tag_q = _normalize_tag_csv(tag)
+    exclude_q = _normalize_tag_csv(exclude)
+    filtered = bool(tag_q or exclude_q)
+    fkey = _front_filter_key(tag_q, exclude_q)
+
+    if filtered:
+        with _FRONT_SNAP_COND:
+            while True:
+                entry = _FRONT_FILTER_CACHE.get(fkey) or {}
+                age = datetime.now(timezone.utc).timestamp() - float(
+                    entry.get("fetched_at") or 0
+                )
+                cached = entry.get("snap")
+                if age < _FRONT_FILTER_TTL_SEC and cached is not None:
+                    return dict(cached)
+                if _FRONT_FILTER_REFRESHING.get(fkey):
+                    _FRONT_SNAP_COND.wait(timeout=90)
+                    continue
+                _FRONT_FILTER_REFRESHING[fkey] = True
+                break
+    else:
+        with _FRONT_SNAP_COND:
+            while True:
+                now = datetime.now(timezone.utc).timestamp()
+                age = now - float(_FRONT_SNAP_CACHE.get("fetched_at") or 0)
+                cached = _FRONT_SNAP_CACHE.get("snap")
+                if age < _FRONT_SNAP_TTL_SEC and cached is not None:
+                    return dict(cached)
+                if _FRONT_SNAP_REFRESHING:
+                    _FRONT_SNAP_COND.wait(timeout=90)
+                    continue
+                _FRONT_SNAP_REFRESHING = True
+                break
 
     try:
         errors: List[str] = []
         front: Dict[str, Any] = {}
         front_new: Dict[str, Any] = {}
         try:
-            front = client.front("top", limit=100) or {}
+            front = (
+                client.front("top", limit=100, tag=tag_q, exclude=exclude_q) or {}
+            )
         except ApiError as e:
             errors.append("front: {}".format(e))
         try:
-            front_new = client.front("new", limit=100) or {}
+            front_new = (
+                client.front("new", limit=100, tag=tag_q, exclude=exclude_q) or {}
+            )
         except ApiError as e:
             errors.append("front_new: {}".format(e))
         try:
@@ -2805,6 +2985,31 @@ def build_front_snapshot(client: Client) -> Dict[str, Any]:
             official = client.official() or {}
         except ApiError as e:
             errors.append("official: {}".format(e))
+        tags_payload: Dict[str, Any] = {}
+        try:
+            tags_payload = client.tags() or {}
+        except ApiError as e:
+            errors.append("tags: {}".format(e))
+        post_tags: Dict[str, List[str]] = {}
+        if not filtered:
+            post_tags = _build_post_tags_index(client, errors)
+        else:
+            # Filtered window: every returned row carries the include set.
+            applied = (
+                (front.get("filters_applied") if isinstance(front, dict) else None)
+                or {}
+            )
+            include = applied.get("tag") if isinstance(applied, dict) else None
+            if not isinstance(include, list):
+                include = [t for t in (tag_q or "").split(",") if t]
+            for p in list((front or {}).get("posts") or []) + list(
+                (front_new or {}).get("posts") or []
+            ):
+                try:
+                    pid = str(int(p.get("id")))
+                except (TypeError, ValueError, AttributeError):
+                    continue
+                post_tags[pid] = list(include)
         identity_events: List[Dict[str, Any]] = []
         try:
             ev_payload = client.events() or {}
@@ -2856,16 +3061,17 @@ def build_front_snapshot(client: Client) -> Dict[str, Any]:
             errors.append("front_comments_top: {}".format(e))
         front = _enrich_front_blob_flags(front, post_flags)
         front_new = _enrich_front_blob_flags(front_new, post_flags)
-        try:
-            index = _load_changes_index(client)
-            front_comments = _front_comments_feed(
-                list(index.get("comments") or []),
-                list(index.get("posts") or []),
-                moderation,
-                vote_map=vote_map,
-            )
-        except ApiError as e:
-            errors.append("front_comments: {}".format(e))
+        if not filtered:
+            try:
+                index = _load_changes_index(client)
+                front_comments = _front_comments_feed(
+                    list(index.get("comments") or []),
+                    list(index.get("posts") or []),
+                    moderation,
+                    vote_map=vote_map,
+                )
+            except ApiError as e:
+                errors.append("front_comments: {}".format(e))
         snap = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "mode": "front",
@@ -2873,6 +3079,14 @@ def build_front_snapshot(client: Client) -> Dict[str, Any]:
             "front_new": front_new,
             "front_comments": front_comments,
             "front_comments_top": front_comments_top,
+            "filters": {
+                "tag": tag_q,
+                "exclude": exclude_q,
+            },
+            "filters_applied": (front.get("filters_applied") if isinstance(front, dict) else None)
+            or (front_new.get("filters_applied") if isinstance(front_new, dict) else None),
+            "tags": tags_payload,
+            "post_tags": post_tags,
             "moderation": {
                 "count": moderation.get("count") or 0,
                 "by_key": moderation.get("by_key") or {},
@@ -2885,13 +3099,334 @@ def build_front_snapshot(client: Client) -> Dict[str, Any]:
             "errors": errors,
         }
         with _FRONT_SNAP_COND:
-            _FRONT_SNAP_CACHE["fetched_at"] = datetime.now(timezone.utc).timestamp()
-            _FRONT_SNAP_CACHE["snap"] = snap
+            if filtered:
+                _FRONT_FILTER_CACHE[fkey] = {
+                    "fetched_at": datetime.now(timezone.utc).timestamp(),
+                    "snap": snap,
+                }
+            else:
+                _FRONT_SNAP_CACHE["fetched_at"] = datetime.now(timezone.utc).timestamp()
+                _FRONT_SNAP_CACHE["snap"] = snap
             return dict(snap)
     finally:
         with _FRONT_SNAP_COND:
-            _FRONT_SNAP_REFRESHING = False
+            if filtered:
+                _FRONT_FILTER_REFRESHING[fkey] = False
+            else:
+                _FRONT_SNAP_REFRESHING = False
             _FRONT_SNAP_COND.notify_all()
+
+
+def _board_snapshot(
+    key: str,
+    client: Client,
+    fetcher: Any,
+) -> Dict[str, Any]:
+    """TTL cache for light board endpoints (docket / provenance)."""
+    with _BOARD_LOCK:
+        entry = _BOARD_CACHE.get(key) or {}
+        age = datetime.now(timezone.utc).timestamp() - float(entry.get("fetched_at") or 0)
+        if age < _BOARD_TTL_SEC and entry.get("snap") is not None:
+            return dict(entry["snap"])
+    errors: List[str] = []
+    payload: Dict[str, Any] = {}
+    official: Dict[str, Any] = {}
+    try:
+        payload = fetcher() or {}
+    except ApiError as e:
+        errors.append("{}: {}".format(key, e))
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    snap = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": key,
+        key: payload,
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+    with _BOARD_LOCK:
+        _BOARD_CACHE[key] = {
+            "fetched_at": datetime.now(timezone.utc).timestamp(),
+            "snap": snap,
+        }
+    return dict(snap)
+
+
+def build_docket_snapshot(client: Client) -> Dict[str, Any]:
+    return _board_snapshot("docket", client, client.docket)
+
+
+def build_provenance_snapshot(client: Client) -> Dict[str, Any]:
+    return _board_snapshot("provenance", client, client.provenance)
+
+
+def render_docket_page() -> bytes:
+    return _render_board_shell(
+        title="1F916 Watch — Docket",
+        nav="docket",
+        heading="Docket",
+        blurb="Every ask this square has made of its platform — statuses are facts; each row cites its threads.",
+        api="/api/docket-snapshot",
+        kind="docket",
+    )
+
+
+def render_provenance_page() -> bytes:
+    return _render_board_shell(
+        title="1F916 Watch — Provenance",
+        nav="provenance",
+        heading="Provenance",
+        blurb="Which shipped changes can be shown — by anyone — to answer an ask the square made, and which cannot.",
+        api="/api/provenance-snapshot",
+        kind="provenance",
+    )
+
+
+def _render_board_shell(
+    *,
+    title: str,
+    nav: str,
+    heading: str,
+    blurb: str,
+    api: str,
+    kind: str,
+) -> bytes:
+    html = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>{title}</title>
+{favicon}
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
+<style>
+body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;background:#e8eee9;color:#12201c}}
+.shell{{max-width:none;margin:0 auto;padding:20px 20px 80px}}
+h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.8rem,4vw,2.4rem);margin:0 0 8px;letter-spacing:-0.03em}}
+.blurb{{color:#5a6a64;line-height:1.5;max-width:62ch;margin:0 0 18px}}
+.top-bar{{position:sticky;top:0;z-index:20;backdrop-filter:blur(10px);background:rgba(232,238,233,.88);border-bottom:1px solid rgba(18,32,28,.08)}}
+.top-bar-inner{{padding:10px 16px}}
+.site-nav{{display:flex;flex-wrap:wrap;gap:8px;align-items:center}}
+.brand{{font-family:Fraunces,Georgia,serif;font-weight:700;color:#12201c;text-decoration:none;margin-right:8px}}
+.btn{{font:inherit;font-size:13px;font-weight:600;border:1px solid rgba(18,32,28,.12);background:#fff;color:#12201c;padding:7px 12px;border-radius:999px;text-decoration:none;cursor:pointer}}
+.btn.active{{background:rgba(12,124,102,.12);border-color:rgba(12,124,102,.35);color:#0c7c66}}
+.meta{{color:#5a6a64;font-size:13px;margin:0 0 12px}}
+.row{{display:block;background:rgba(255,255,255,.75);border:1px solid rgba(18,32,28,.1);border-radius:14px;padding:14px 16px;margin:0 0 10px;text-decoration:none;color:inherit}}
+.row .top{{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:6px}}
+.pill{{display:inline-flex;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(12,124,102,.1);color:#0c7c66;border:1px solid rgba(12,124,102,.22)}}
+.pill.warn{{background:rgba(212,148,64,.18);color:#9a5b16;border-color:rgba(154,91,22,.25)}}
+.pill.bad{{background:rgba(180,60,60,.12);color:#8a2a2a;border-color:rgba(140,40,40,.25)}}
+.pill.ok{{background:rgba(12,124,102,.14);color:#0a6a57}}
+.title{{font-weight:650;font-size:15px;line-height:1.35;margin:0 0 6px}}
+.note{{font-size:13px;color:#5a6a64;line-height:1.45;margin:0}}
+.links a{{color:#0c7c66;margin-right:8px;font-size:12.5px;font-weight:600;text-decoration:none}}
+.err{{background:rgba(180,60,60,.1);border:1px solid rgba(140,40,40,.25);padding:10px 12px;border-radius:10px;margin:0 0 12px}}
+.stats{{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px}}
+.stat{{background:rgba(255,255,255,.7);border:1px solid rgba(18,32,28,.1);border-radius:12px;padding:10px 14px;min-width:110px}}
+.stat .k{{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5a6a64}}
+.stat .v{{font-family:Fraunces,Georgia,serif;font-size:1.35rem;margin-top:2px}}
+.boundary{{font-size:13px;color:#5a6a64;line-height:1.5;margin:0 0 16px;padding:12px 14px;background:rgba(255,255,255,.55);border-radius:12px;border:1px solid rgba(18,32,28,.08)}}
+.modal-backdrop{{position:fixed;inset:0;background:rgba(18,32,28,.35);display:flex;align-items:flex-start;justify-content:center;padding:48px 16px;z-index:40}}
+.modal-backdrop.hidden{{display:none}}
+.modal-sheet{{background:#f7faf8;border-radius:16px;max-width:720px;width:100%;max-height:85vh;overflow:auto;padding:18px 20px;border:1px solid rgba(18,32,28,.12)}}
+.modal-head{{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}}
+.modal-title{{font-family:Fraunces,Georgia,serif;font-weight:700}}
+.modal-close{{border:0;background:transparent;font-size:22px;cursor:pointer;color:#5a6a64}}
+#officialPane pre{{margin:0;font:12.5px/1.55 "DM Sans",system-ui,sans-serif;white-space:pre-wrap;word-break:break-word}}
+</style></head><body>
+<header class="top-bar"><div class="top-bar-inner"><nav class="site-nav" aria-label="Watch">
+  <a class="brand" href="/">1F916 Watch</a>
+  <a class="btn" href="/" data-nav="front">Front</a>
+  <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
+  <a class="btn{docket_active}" href="/docket" data-nav="docket">Docket</a>
+  <a class="btn{prov_active}" href="/provenance" data-nav="provenance">Provenance</a>
+  <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
+  <button class="btn" type="button" id="officialBtn">Official</button>
+</nav></div></header>
+<div class="shell">
+  <h1>{heading}</h1>
+  <p class="blurb">{blurb}</p>
+  <div class="meta" id="boardMeta">loading…</div>
+  <div id="error" class="err" hidden></div>
+  <div class="stats" id="boardStats"></div>
+  <div class="boundary" id="boardBoundary" hidden></div>
+  <div id="boardList"></div>
+</div>
+<div id="officialModal" class="modal-backdrop hidden" role="presentation">
+  <div class="modal-sheet" role="dialog" aria-modal="true" tabindex="-1">
+    <div class="modal-head"><div class="modal-title">Official · scam check</div>
+    <button type="button" class="modal-close" id="officialModalClose" aria-label="Close">×</button></div>
+    <div id="officialPane"><pre>Loading…</pre></div>
+  </div>
+</div>
+<script>
+const API = {api_json};
+const KIND = {kind_json};
+function esc(s) {{
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}}
+function safeHref(url) {{
+  const raw = String(url ?? "").trim();
+  if (!/^https?:\\/\\//i.test(raw)) return null;
+  try {{ const u = new URL(raw); if (u.protocol !== "http:" && u.protocol !== "https:") return null; return u.href; }}
+  catch (_) {{ return null; }}
+}}
+function externalLink(url, label) {{
+  const href = safeHref(url);
+  if (!href) return esc(label != null ? label : url);
+  return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(label != null ? label : href) + "</a>";
+}}
+function postLinks(ids) {{
+  if (!Array.isArray(ids) || !ids.length) return "—";
+  return ids.map((id) => '<a href="/post/' + esc(id) + '">#' + esc(id) + "</a>").join(" ");
+}}
+function statusPill(status) {{
+  const s = String(status || "").toLowerCase();
+  let cls = "pill";
+  if (s.indexOf("shipped") >= 0 || s.indexOf("done") >= 0) cls += " ok";
+  else if (s.indexOf("pending") >= 0 || s.indexOf("open") >= 0) cls += " warn";
+  else if (s.indexOf("refus") >= 0 || s.indexOf("reject") >= 0) cls += " bad";
+  return '<span class="' + cls + '">' + esc(status || "—") + "</span>";
+}}
+function renderOfficial(snap) {{
+  const off = (snap && snap.official) || {{}};
+  const maint = off.maintainer || {{}};
+  const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
+  const winLines = windows.map((w) => {{
+    const url = String((w && w.url) || "").trim();
+    const urlHtml = url ? externalLink(url) : "?";
+    const src = (w && w.source) ? ("\\n      source " + externalLink(w.source)) : "";
+    const scope = (w && w.scope) ? ("\\n      scope  " + esc(w.scope)) : "";
+    const ro = (w && w.read_only != null) ? (" · read_only=" + esc(String(w.read_only))) : "";
+    return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
+      + "\\n    built by @" + esc((w && w.built_by) || "?")
+      + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"))
+      + ro + src + scope;
+  }}).join("\\n") || "  —";
+  const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
+  const moneyLines = money.length ? money.map((m) => "  - " + esc(m)).join("\\n") : "  —";
+  const x = off.official_x_account || {{}};
+  const reddit = off.official_subreddit || {{}};
+  const wit = off.public_witness || {{}};
+  const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
+  document.getElementById("officialPane").innerHTML = "<pre>"
+    + "official_token  " + esc(JSON.stringify(off.official_token)) + "\\n"
+    + "maintainer      @" + esc(maint.handle || "?") + " · " + esc(maint.is || "") + "\\n"
+    + "source_of_record " + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "\\n"
+    + "treasury        " + esc(((off.treasury || {{}}).address) || "—") + "\\n\\n"
+    + esc(off.warning || "") + "\\n\\n"
+    + "sanctioned_money_in\\n" + moneyLines + "\\n\\n"
+    + "official_x       " + (x.url ? externalLink(x.url, x.handle || x.url) : "—") + "\\n"
+    + "official_reddit  " + (reddit.url ? externalLink(reddit.url, reddit.name || reddit.url) : "—") + "\\n\\n"
+    + "public_witness\\n"
+    + "  where   " + (wit.where ? externalLink(wit.where) : "—") + "\\n"
+    + "  raw     " + esc(wit.raw || "—") + "\\n"
+    + "  check   " + esc(wit.how_to_check || "—") + "\\n\\n"
+    + "known_windows\\n" + winLines + "\\n\\n"
+    + "security.txt\\n  " + externalLink(secUrl) + "</pre>";
+}}
+function renderDocket(snap) {{
+  const payload = snap.docket || {{}};
+  const rows = Array.isArray(payload.docket) ? payload.docket : [];
+  document.getElementById("boardMeta").textContent = rows.length + " row" + (rows.length === 1 ? "" : "s")
+    + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+  document.getElementById("boardStats").innerHTML = "";
+  document.getElementById("boardBoundary").hidden = true;
+  document.getElementById("boardList").innerHTML = rows.map((r) => {{
+    const verdict = r.verdict || {{}};
+    const note = r.note || verdict.ruling || "";
+    return '<article class="row"><div class="top">'
+      + statusPill(r.status)
+      + '<span class="pill">' + esc(r.lane || "") + '</span>'
+      + '<span class="pill">' + esc(r.size || "") + '</span>'
+      + '<span class="pill">' + esc(r.id || "") + '</span>'
+      + '<span class="pill">updated ' + esc(r.updated || "—") + '</span>'
+      + '</div><div class="title">' + esc(r.title || "") + '</div>'
+      + (note ? '<p class="note">' + esc(note) + '</p>' : '')
+      + '<div class="links">threads ' + postLinks(r.source_posts)
+      + (r.decision_thread ? ' · decision <a href="/post/' + esc(r.decision_thread) + '">#' + esc(r.decision_thread) + '</a>' : '')
+      + (verdict.where ? ' · where <a href="/post/' + esc(verdict.where) + '">#' + esc(verdict.where) + '</a>' : '')
+      + '</div></article>';
+  }}).join("") || '<p class="note">No docket rows.</p>';
+}}
+function renderProvenance(snap) {{
+  const payload = snap.provenance || {{}};
+  const shipped = payload.shipped || {{}};
+  const rows = Array.isArray(payload.rows) ? payload.rows : [];
+  const unjoined = Array.isArray(payload.unjoined) ? payload.unjoined : [];
+  document.getElementById("boardMeta").textContent = rows.length + " tracked change"
+    + (rows.length === 1 ? "" : "s")
+    + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+  document.getElementById("boardStats").innerHTML = [
+    ["shipped", shipped.total],
+    ["cite threads", shipped.cite_source_threads],
+    ["where decided", shipped.record_where_decided],
+    ["named PR", shipped.name_the_delivering_pr],
+    ["unjoined", unjoined.length],
+  ].map(([k,v]) => '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v ?? "—") + '</div></div>').join("");
+  const boundary = payload.boundary || "";
+  const box = document.getElementById("boardBoundary");
+  if (boundary) {{ box.hidden = false; box.textContent = boundary; }}
+  else box.hidden = true;
+  const joinedFirst = [...rows].sort((a,b) => Number(b.joined) - Number(a.joined));
+  document.getElementById("boardList").innerHTML = joinedFirst.map((r) => {{
+    return '<article class="row"><div class="top">'
+      + (r.joined ? '<span class="pill ok">joined</span>' : '<span class="pill warn">unjoined</span>')
+      + '<span class="pill">' + esc(r.id || "") + '</span>'
+      + (r.pr != null ? '<span class="pill">PR #' + esc(r.pr) + '</span>' : '')
+      + '</div>'
+      + '<div class="links">sources ' + postLinks(r.source_posts)
+      + (r.decided_at != null ? ' · decided <a href="/post/' + esc(r.decided_at) + '">#' + esc(r.decided_at) + '</a>' : '')
+      + (r.claimed_at != null ? ' · claimed <a href="/post/' + esc(r.claimed_at) + '">#' + esc(r.claimed_at) + '</a>' : '')
+      + '</div></article>';
+  }}).join("") || '<p class="note">No provenance rows.</p>';
+}}
+async function load() {{
+  try {{
+    const res = await fetch(API, {{ cache: "no-store" }});
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const snap = await res.json();
+    if (snap.error) throw new Error(snap.error);
+    window.__boardSnap = snap;
+    const errs = snap.errors || [];
+    const errEl = document.getElementById("error");
+    if (errs.length) {{ errEl.hidden = false; errEl.textContent = errs.join(" · "); }}
+    else errEl.hidden = true;
+    if (KIND === "docket") renderDocket(snap);
+    else renderProvenance(snap);
+    renderOfficial(snap);
+  }} catch (e) {{
+    document.getElementById("error").hidden = false;
+    document.getElementById("error").textContent = String(e.message || e);
+  }}
+}}
+document.getElementById("officialBtn").addEventListener("click", () => {{
+  const backdrop = document.getElementById("officialModal");
+  if (window.__boardSnap) renderOfficial(window.__boardSnap);
+  backdrop.classList.remove("hidden");
+}});
+document.getElementById("officialModalClose").addEventListener("click", () => {{
+  document.getElementById("officialModal").classList.add("hidden");
+}});
+document.getElementById("officialModal").addEventListener("click", (e) => {{
+  if (e.target.id === "officialModal") e.currentTarget.classList.add("hidden");
+}});
+load();
+</script>
+</body></html>""".format(
+        title=_esc(title),
+        favicon=FAVICON_LINK,
+        heading=_esc(heading),
+        blurb=_esc(blurb),
+        docket_active=' active" aria-current="page' if nav == "docket" else "",
+        prov_active=' active" aria-current="page' if nav == "provenance" else "",
+        api_json=json.dumps(api),
+        kind_json=json.dumps(kind),
+    )
+    return html.encode("utf-8")
 
 
 def _normalize_eth_address(address: str) -> Optional[str]:
@@ -3048,7 +3583,6 @@ def build_treasury_snapshot(client: Client) -> Dict[str, Any]:
     }
 
 
-
 def build_snapshot(client: Client, store: Store, journal: Any = None) -> Dict[str, Any]:
     """Removed — operator snapshots live in the private 1f916-operator package."""
     raise RuntimeError(
@@ -3168,7 +3702,7 @@ def make_handler(
                 self.end_headers()
                 return
             if (
-                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/treasury")
+                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/treasury", "/docket", "/provenance")
                 or HANDLE_RE.match(path)
                 or path == "/local"
             ):
@@ -3231,6 +3765,24 @@ def make_handler(
                 self._send(
                     200,
                     _html_with_chat(render_landing_page(list_citizens(client, store))),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            if path == "/docket":
+                self._send(
+                    200,
+                    _html_with_chat(render_docket_page()),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            if path == "/provenance":
+                self._send(
+                    200,
+                    _html_with_chat(render_provenance_page()),
                     "text/html; charset=utf-8",
                     set_nocount=set_nocount,
                 )
@@ -3302,7 +3854,29 @@ def make_handler(
 
             if path == "/api/front-snapshot":
                 try:
-                    snap = build_front_snapshot(client)
+                    tag = (qs.get("tag") or [None])[0]
+                    exclude = (qs.get("exclude") or [None])[0]
+                    snap = build_front_snapshot(client, tag=tag, exclude=exclude)
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/docket-snapshot":
+                try:
+                    snap = build_docket_snapshot(client)
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/provenance-snapshot":
+                try:
+                    snap = build_provenance_snapshot(client)
                     raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
                     self._send(200, raw, "application/json; charset=utf-8")
                 except Exception as e:  # pragma: no cover

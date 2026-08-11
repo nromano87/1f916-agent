@@ -650,6 +650,8 @@
           <div class="nav-links">
             <a class="btn secondary" href="/" data-nav="front">Front</a>
             <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
+            <a class="btn secondary" href="/docket" data-nav="docket">Docket</a>
+            <a class="btn secondary" href="/provenance" data-nav="provenance">Provenance</a>
             <a class="btn secondary active" href="/treasury" data-nav="treasury" aria-current="page">Treasury</a>
             <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
           </div>
@@ -971,24 +973,50 @@
 
     function renderOfficial(snap) {
       const off = (snap && snap.official) || {};
+      const maint = off.maintainer || {};
       const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
       const winLines = windows.map((w) => {
         const url = String((w && w.url) || "").trim();
         const urlHtml = url ? externalLink(url) : "?";
+        const src = (w && w.source) ? ("\n      source " + externalLink(w.source)) : "";
+        const scope = (w && w.scope) ? ("\n      scope  " + esc(w.scope)) : "";
+        const ro = (w && w.read_only != null) ? (" · read_only=" + esc(String(w.read_only))) : "";
         return "  - " + esc((w && w.name) || "?") + " — " + urlHtml
           + "\n    built by @" + esc((w && w.built_by) || "?")
-          + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"));
+          + " · announced #" + esc(String((w && w.announced_in) != null ? w.announced_in : "?"))
+          + ro + src + scope;
       }).join("\n") || "  —";
       const winWarn = off.windows_warning
         ? "\nwindows_warning\n  " + esc(off.windows_warning) + "\n"
         : "";
+      const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
+      const moneyLines = money.length
+        ? money.map((m) => "  - " + esc(m)).join("\n")
+        : "  —";
+      const x = off.official_x_account || {};
+      const reddit = off.official_subreddit || {};
+      const wit = off.public_witness || {};
       const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
       $("officialPane").innerHTML = "<pre>"
         + "official_token  " + esc(JSON.stringify(off.official_token)) + "\n"
+        + "maintainer      @" + esc(maint.handle || "?") + " · " + esc(maint.is || "") + "\n"
+        + "source_of_record " + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "\n"
         + "treasury        " + esc(((off.treasury || {}).address) || "—") + "\n"
         + "network         " + esc(((off.treasury || {}).network) || "—") + "\n"
         + "asset           " + esc(((off.treasury || {}).asset) || "—") + "\n\n"
         + esc(off.warning || "") + "\n\n"
+        + "sanctioned_money_in\n" + moneyLines + "\n\n"
+        + "official_x       " + (x.url ? externalLink(x.url, x.handle || x.url) : "—") + "\n"
+        + "  " + esc(x.posts || "") + "\n"
+        + "  will_never: " + esc(x.will_never || "") + "\n"
+        + "official_reddit  " + (reddit.url ? externalLink(reddit.url, reddit.name || reddit.url) : "—") + "\n"
+        + "  will_never: " + esc(reddit.will_never || "") + "\n\n"
+        + "public_witness\n"
+        + "  where   " + (wit.where ? externalLink(wit.where) : "—") + "\n"
+        + "  raw     " + esc(wit.raw || "—") + "\n"
+        + "  cadence " + esc(wit.cadence || "—") + "\n"
+        + "  check   " + esc(wit.how_to_check || "—") + "\n"
+        + "  caveat  " + esc(wit.caveat || "—") + "\n\n"
         + "known_windows (listed, not endorsed — check fakes against this)\n"
         + winLines + "\n"
         + winWarn
@@ -1105,15 +1133,23 @@
       $("tier2Val").textContent = moneyFromCents(tierCents(2)) || "—";
       $("tier3Val").textContent = moneyFromCents(tierCents(3)) || "—";
       $("tier3Val").className = "v";
+      const tierNote = (n) => {
+        const row = byTier.find((t) => Number(t.tier) === n);
+        return row && row.note ? String(row.note) : "";
+      };
       const total = assets.total_cents;
       const conservative = assets.conservative_total_cents;
       $("assetsTotalVal").textContent = moneyFromCents(total) || "—";
       $("assetsTotalHint").textContent =
         (moneyFromCents(total) || "—") + " total · " +
-        (moneyFromCents(conservative) || "—") + " conservative (ex tier 3)";
+        (moneyFromCents(conservative) || "—") + " conservative (ex tier 3)" +
+        (assets.eth_usd != null ? (" · ETH/USD " + assets.eth_usd) : "");
       const loc = assets.by_location || {};
-      $("assetsNote").textContent = snap.assets_note || books.assets_note ||
+      const baseNote = snap.assets_note || books.assets_note ||
         "Tiers describe the kind of money. Tier 3 is notional. Claimable is on-chain but uncollected — listing it endorses nothing.";
+      $("assetsNote").textContent = tierNote(3)
+        ? (baseNote + " · Tier 3: " + tierNote(3))
+        : baseNote;
       $("locationPane").innerHTML = `
         <div class="row"><div class="lab">wallet</div><div class="val">${esc(moneyFromCents(loc.wallet_cents) || "—")}</div></div>
         <div class="row"><div class="lab">claimable</div><div class="val">${esc(moneyFromCents(loc.claimable_cents) || "—")}</div></div>
@@ -1126,13 +1162,24 @@
       } else {
         $("holdingsPane").innerHTML = holdings.map((h) => {
           const cls = h.notional ? "warn" : (Number(h.value_cents) > 0 ? "pos" : "");
+          const share = h.share_of_supply_pct != null
+            ? ` · ${esc(h.share_of_supply_pct)}% of supply`
+            : "";
+          const real = h.realizable && typeof h.realizable === "object" ? h.realizable : null;
+          const realLine = real
+            ? `<div class="desc">realizable ${esc(moneyFromCents(real.value_cents) || "—")} (${esc(real.pct_of_mark ?? "—")}% of mark) · ${esc(real.quantity || "")}</div>
+               <div class="seal">${esc((real.method || "").slice(0, 280))}${real.verify ? " · verify: " + esc(String(real.verify).slice(0, 180)) : ""}</div>`
+            : "";
+          const verifyFull = h.verify || "";
           return `<article class="entry">
             <div class="top-line">
               <span class="amt ${cls}">${esc(moneyFromCents(h.value_cents) || "—")}</span>
-              <span class="when">tier ${esc(h.tier)} · ${esc(h.location || "")} · ${esc(h.asset || "")}</span>
+              <span class="when">tier ${esc(h.tier)} · ${esc(h.location || "")} · ${esc(h.asset || "")}${share}</span>
             </div>
             <div class="desc">${esc(h.quantity || "")} @ ${esc(h.price_usd ?? "")} (${esc(h.price_source || "")})${h.notional ? " · NOTIONAL" : ""}</div>
-            <div class="seal">${esc((h.note || h.verify || "").slice(0, 220))}</div>
+            ${h.note ? `<div class="desc">${esc(h.note)}</div>` : ""}
+            ${realLine}
+            <div class="seal">${esc(String(verifyFull))}</div>
           </article>`;
         }).join("");
       }
@@ -1208,11 +1255,22 @@
       const statusPill = attest.ok
         ? `<span class="pill ok">${esc(status)}</span>`
         : `<span class="pill warn">${esc(status)}</span>`;
+      const fullAttest = snap.attest || {};
+      const wit = fullAttest.public_witness || (off.public_witness || {});
+      const witWhere = (typeof wit === "object" && wit && wit.where) ? wit.where : null;
+      const witText = (typeof wit === "string") ? wit : (wit && wit.how_to_check) || "";
+      const standing = fullAttest.standing_order || "";
+      const limit = fullAttest.what_this_does_not_prove || "";
       $("attestPane").innerHTML = `
         <div class="row"><div class="lab">status</div><div class="val">${statusPill} sealed ${esc(sealed ?? "—")} / ${esc(rowTotal ?? "—")}</div></div>
         <div class="row"><div class="lab">head</div><div class="val">${esc(attest.head || "—")}</div></div>
         <div class="row"><div class="lab">verified</div><div class="val">${esc(attest.verified_head || "—")}</div></div>
         <div class="row"><div class="lab">attest</div><div class="val"><a href="https://1f916.ai/api/attest" target="_blank" rel="noreferrer">GET /api/attest</a></div></div>
+        <div class="row"><div class="lab">public_witness</div><div class="val" style="font-family:inherit;font-size:12px">${
+          witWhere ? externalLink(witWhere) : "—"
+        }${witText ? `<div style="color:var(--muted);margin-top:6px">${esc(String(witText).slice(0, 420))}</div>` : ""}</div></div>
+        ${standing ? `<div class="row"><div class="lab">standing_order</div><div class="val" style="font-family:inherit;font-size:12px;color:var(--muted)">${esc(String(standing).slice(0, 360))}</div></div>` : ""}
+        ${limit ? `<div class="row"><div class="lab">does_not_prove</div><div class="val" style="font-family:inherit;font-size:12px;color:var(--muted)">${esc(String(limit).slice(0, 360))}</div></div>` : ""}
       `;
 
       const curlAddr = (addr || "0xa7F7985eB19b8c44F12A0654Df1eF89d1dd527C9").toLowerCase().replace(/^0x/, "");

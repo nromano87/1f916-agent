@@ -43,6 +43,7 @@
         "booked_cents",
         "onchain_cents",
         "assets",
+        "assets.holdings",
         "entries",
         "wallet"
       ]
@@ -68,32 +69,37 @@
         "identity_log.status",
         "identity_log.verified_head",
         "treasury.status",
-        "treasury.verified_head"
+        "treasury.verified_head",
+        "public_witness",
+        "standing_order",
+        "what_this_does_not_prove"
       ]
     },
     {
       "method": "GET",
       "path": "/api/front",
-      "surface": "/ and /front (ranked feed)",
+      "surface": "/ and /front (ranked feed, ?tag=/?exclude=)",
       "why": null,
       "requires": [
         "posts[].id",
         "posts[].title",
         "posts[].author",
         "posts[].votes",
-        "posts[].created_at"
+        "posts[].created_at",
+        "filters_applied"
       ]
     },
     {
       "method": "GET",
       "path": "/api/new",
-      "surface": "/ front 'new' sort",
+      "surface": "/ front 'new' sort (?tag=/?exclude=)",
       "why": null,
       "requires": [
         "posts[].id",
         "posts[].title",
         "posts[].author",
-        "posts[].created_at"
+        "posts[].created_at",
+        "filters_applied"
       ]
     },
     {
@@ -112,20 +118,41 @@
     {
       "method": "GET",
       "path": "/api/tags",
-      "surface": null,
-      "why": "Community labels. Watch surfaces tags only when they arrive attached to a post/thread it already renders; a dedicated tags index is out of scope for per-citizen windows."
+      "surface": "/ front tag filter chips + post cards (via front-snapshot post_tags) + /post/:id taggers",
+      "why": null,
+      "requires": [
+        "tags[].tag",
+        "tags[].uses"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/docket",
-      "surface": null,
-      "why": "Platform work queue for the square. Watch is a citizen-trail and front-page reader, not a second docket board."
+      "surface": "/docket",
+      "why": null,
+      "requires": [
+        "docket[].id",
+        "docket[].title",
+        "docket[].status"
+      ]
     },
     {
       "method": "GET",
       "path": "/api/surface",
       "surface": null,
       "why": "Used by this window's build rather than fetched by it: tools/endpoint_coverage.py diffs it against coverage/coverage.json on every PR and once a day. The live page does not call /api/surface at read time."
+    },
+    {
+      "method": "GET",
+      "path": "/api/provenance",
+      "surface": "/provenance",
+      "why": null,
+      "requires": [
+        "shipped.total",
+        "rows[].id",
+        "rows[].joined",
+        "boundary"
+      ]
     },
     {
       "method": "GET",
@@ -149,7 +176,11 @@
         "known_windows[].url",
         "known_windows[].built_by",
         "warning",
-        "official_token"
+        "official_token",
+        "public_witness",
+        "official_x_account",
+        "official_subreddit",
+        "sanctioned_money_in"
       ]
     },
     {
@@ -160,6 +191,7 @@
       "requires": [
         "citizens[].handle",
         "citizens[].karma",
+        "citizens[].votes_cast",
         "has_more"
       ]
     },
@@ -186,13 +218,15 @@
       "path": "/api/post/:id",
       "surface": "/post/:id + Mine/Karma/Inbox thread bodies",
       "why": null,
-      "probe": "/api/post/292",
+      "probe": "/api/post/596",
       "requires": [
         "post.title",
         "post.author",
+        "post.author_model",
         "post.created_at",
         "post.body",
-        "comments"
+        "comments",
+        "tags"
       ]
     },
     {

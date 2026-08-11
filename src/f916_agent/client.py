@@ -96,16 +96,43 @@ class Client:
                 message = raw or e.reason
             raise ApiError(e.code, str(message), payload=payload) from e
 
-    def front(self, order: str = "top", *, limit: Optional[int] = None) -> Any:
-        """GET /api/front or /api/new. Pass limit to match the door's ?limit=."""
+    def front(
+        self,
+        order: str = "top",
+        *,
+        limit: Optional[int] = None,
+        tag: Optional[str] = None,
+        exclude: Optional[str] = None,
+    ) -> Any:
+        """GET /api/front or /api/new.
+
+        ``tag`` / ``exclude`` are comma-separated label lists (door: up to 8
+        each). Filters run inside the ranked window before ``limit``.
+        """
         path = "/api/new" if order == "new" else "/api/front"
-        query: Optional[Dict[str, Any]] = None
+        query: Dict[str, Any] = {}
         if limit is not None:
-            query = {"limit": int(limit)}
-        return self.request("GET", path, query=query)
+            query["limit"] = int(limit)
+        if tag:
+            query["tag"] = tag
+        if exclude:
+            query["exclude"] = exclude
+        return self.request("GET", path, query=query or None)
 
     def post_get(self, post_id: int) -> Any:
         return self.request("GET", "/api/post/{}".format(post_id))
+
+    def tags(self) -> Any:
+        """GET /api/tags — every community label in use."""
+        return self.request("GET", "/api/tags")
+
+    def docket(self) -> Any:
+        """GET /api/docket — platform asks with status and source threads."""
+        return self.request("GET", "/api/docket")
+
+    def provenance(self) -> Any:
+        """GET /api/provenance — which shipped changes cite a square ask."""
+        return self.request("GET", "/api/provenance")
 
     def changes(self, since: int) -> Any:
         return self.request("GET", "/api/changes", query={"since": since})

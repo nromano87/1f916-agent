@@ -53,6 +53,8 @@
   var logEl = null;
   var ignoreEl = null;
   var nameEl = null;
+  var nameRow = null;
+  var nameChip = null;
   var textEl = null;
   var errEl = null;
   var sendBtn = null;
@@ -196,14 +198,22 @@
     "#f916-chat-ignored .label{font-weight:700;margin-bottom:8px;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:#8a9892;}" +
     "#f916-chat-ignored .chip{display:inline-flex;align-items:center;gap:8px;margin:0 8px 8px 0;padding:8px 12px;border-radius:999px;border:1px solid rgba(18,32,28,.1);background:#fff;font-weight:600;}" +
     "#f916-chat-ignored .chip button{border:0;background:transparent;color:#d4552a;font:700 16px/1 system-ui;cursor:pointer;padding:0;width:22px;height:22px;}" +
-    "#f916-chat-form{display:grid;grid-template-columns:1fr;gap:10px;padding:12px 14px 14px;border-top:1px solid rgba(18,32,28,.08);background:rgba(232,238,233,.95);}" +
-    "#f916-chat-form input,#f916-chat-form textarea{width:100%;font:inherit;font-size:16px;border:1px solid rgba(18,32,28,.14);border-radius:14px;padding:14px 14px;background:#fff;color:#12201c;}" +
-    "#f916-chat-form textarea{min-height:88px;resize:none;line-height:1.4;}" +
-    "#f916-chat-form button#f916-chat-send{width:100%;border:0;border-radius:14px;background:#0c7c66;color:#fff;font:700 16px/1 \"DM Sans\",system-ui,sans-serif;padding:16px 18px;cursor:pointer;min-height:52px;}" +
-    "#f916-chat-form button#f916-chat-send:active{transform:scale(.99);}" +
+    "#f916-chat-form{display:flex;flex-direction:column;gap:6px;padding:8px 10px 10px;border-top:1px solid rgba(18,32,28,.08);background:rgba(232,238,233,.95);}" +
+    "#f916-chat-form .name-row{display:flex;align-items:center;min-height:0;}" +
+    "#f916-chat-form .name-row.collapsed #f916-chat-name{display:none;}" +
+    "#f916-chat-form .name-row:not(.collapsed) #f916-chat-name-chip{display:none;}" +
+    "#f916-chat-form #f916-chat-name-chip{border:0;background:transparent;color:#5a6a64;font:600 12px/1.2 \"DM Sans\",system-ui,sans-serif;cursor:pointer;padding:2px 0;text-align:left;}" +
+    "#f916-chat-form #f916-chat-name-chip strong{color:#0c7c66;font-weight:700;}" +
+    "#f916-chat-form #f916-chat-name-chip:active{color:#12201c;}" +
+    "#f916-chat-form #f916-chat-name{width:100%;font:inherit;font-size:16px;border:1px solid rgba(18,32,28,.14);border-radius:10px;padding:8px 10px;background:#fff;color:#12201c;}" +
+    "#f916-chat-form .compose{display:flex;align-items:flex-end;gap:8px;}" +
+    "#f916-chat-form textarea{flex:1;min-width:0;width:auto;font:inherit;font-size:16px;border:1px solid rgba(18,32,28,.14);border-radius:12px;padding:10px 12px;background:#fff;color:#12201c;min-height:42px;max-height:96px;resize:none;line-height:1.35;field-sizing:content;}" +
+    "#f916-chat-form button#f916-chat-send{flex:0 0 auto;border:0;border-radius:12px;background:#0c7c66;color:#fff;font:700 13px/1 \"DM Sans\",system-ui,sans-serif;padding:0 14px;cursor:pointer;min-height:42px;min-width:56px;}" +
+    "#f916-chat-form button#f916-chat-send:active{transform:scale(.97);}" +
     "#f916-chat-form button#f916-chat-send:disabled{opacity:.55;cursor:wait;}" +
-    "#f916-chat-form .hint{font-size:12px;color:#8a9892;line-height:1.35;}" +
-    "#f916-chat-form .err{display:none;font-size:13px;color:#d4552a;font-weight:600;line-height:1.35;}" +
+    "#f916-chat-form .foot{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;min-height:0;}" +
+    "#f916-chat-form .hint{font-size:11px;color:#8a9892;line-height:1.3;}" +
+    "#f916-chat-form .err{display:none;font-size:12px;color:#d4552a;font-weight:600;line-height:1.3;text-align:right;}" +
     "#f916-chat-form .err:not(:empty){display:block;}" +
     "body.f916-chat-full{overflow:hidden;touch-action:none;}" +
     "@media (min-width:720px){" +
@@ -238,11 +248,15 @@
     '<div id="f916-chat-ignored"></div>' +
     '<div id="f916-chat-log"><div class="empty">Say hi. No accounts.</div></div>' +
     '<form id="f916-chat-form">' +
-    '<input id="f916-chat-name" name="name" maxlength="24" placeholder="Your display name" autocomplete="nickname" enterkeyhint="next" />' +
-    '<textarea id="f916-chat-text" name="text" maxlength="280" placeholder="Write a message" rows="3" required enterkeyhint="send"></textarea>' +
+    '<div class="name-row" id="f916-chat-name-row">' +
+    '<button type="button" id="f916-chat-name-chip" aria-label="Edit display name"></button>' +
+    '<input id="f916-chat-name" name="name" maxlength="24" placeholder="Display name" autocomplete="nickname" enterkeyhint="next" />' +
+    "</div>" +
+    '<div class="compose">' +
+    '<textarea id="f916-chat-text" name="text" maxlength="280" placeholder="Message" rows="1" required enterkeyhint="send"></textarea>' +
     '<button type="submit" id="f916-chat-send">Send</button>' +
-    '<div class="hint">1 msg / 5s</div>' +
-    '<div class="err" id="f916-chat-err"></div></form>';
+    "</div>" +
+    '<div class="foot"><div class="hint">1 msg / 5s</div><div class="err" id="f916-chat-err"></div></div></form>';
 
   function $(id) {
     return document.getElementById(id);
@@ -530,14 +544,35 @@
     } catch (_) {}
   }
 
+  function paintNameRow(editing) {
+    if (!nameRow || !nameChip || !nameEl) return;
+    var name = (nameEl.value || myName || "").trim();
+    var collapsed = !editing && !!name;
+    nameRow.classList.toggle("collapsed", collapsed);
+    if (collapsed) {
+      nameChip.innerHTML = "as <strong>" + esc(name) + "</strong> · edit";
+    }
+  }
+
+  function autosizeText() {
+    if (!textEl) return;
+    textEl.style.height = "auto";
+    var next = Math.min(96, Math.max(42, textEl.scrollHeight));
+    textEl.style.height = next + "px";
+  }
+
   function bind(startOpen) {
     logEl = $("f916-chat-log");
     ignoreEl = $("f916-chat-ignored");
+    nameRow = $("f916-chat-name-row");
+    nameChip = $("f916-chat-name-chip");
     nameEl = $("f916-chat-name");
     textEl = $("f916-chat-text");
     errEl = $("f916-chat-err");
     sendBtn = $("f916-chat-send");
     if (myName) nameEl.value = myName;
+    paintNameRow(false);
+    autosizeText();
 
     fab.addEventListener("click", function () {
       setOpen(true);
@@ -569,12 +604,45 @@
       unignoreName(btn.getAttribute("data-unignore") || "");
     });
 
+    nameChip.addEventListener("click", function () {
+      paintNameRow(true);
+      nameEl.focus();
+      nameEl.select();
+    });
+    nameEl.addEventListener("blur", function () {
+      var name = (nameEl.value || "").trim();
+      if (name) {
+        myName = name;
+        try {
+          localStorage.setItem(NAME_KEY, name);
+        } catch (_) {}
+      }
+      paintNameRow(false);
+    });
+    nameEl.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      nameEl.blur();
+      textEl.focus();
+    });
+    textEl.addEventListener("input", autosizeText);
+    textEl.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter" || e.shiftKey) return;
+      e.preventDefault();
+      $("f916-chat-form").requestSubmit
+        ? $("f916-chat-form").requestSubmit()
+        : $("f916-chat-form").dispatchEvent(
+            new Event("submit", { cancelable: true, bubbles: true })
+          );
+    });
+
     $("f916-chat-form").addEventListener("submit", async function (e) {
       e.preventDefault();
       if (errEl) errEl.textContent = "";
       var name = (nameEl.value || "").trim();
       var text = (textEl.value || "").trim();
       if (!name || !text) {
+        if (!name) paintNameRow(true);
         if (errEl) errEl.textContent = "name and message required";
         return;
       }
@@ -597,6 +665,8 @@
           localStorage.setItem(NAME_KEY, name);
         } catch (_) {}
         textEl.value = "";
+        autosizeText();
+        paintNameRow(false);
         if (data.message) {
           latestId = Math.max(latestId, data.message.id || 0);
         }
