@@ -502,6 +502,44 @@
       text-transform: none;
     }
     .panel-h .meta { font-size: 12px; color: var(--muted); font-weight: 500; }
+    .panel-h-end {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      margin-left: auto;
+    }
+    .tags-trigger {
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 5px 11px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.75);
+      color: var(--muted);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 0.15s ease, background 0.15s ease, border-color 0.15s ease;
+    }
+    .tags-trigger .n {
+      font-variant-numeric: tabular-nums;
+      min-width: 1.1em;
+      text-align: center;
+    }
+    .tags-trigger.active {
+      background: var(--accent-soft);
+      border-color: rgba(12, 124, 102, 0.35);
+      color: var(--accent);
+    }
+    .tags-trigger.active.has-exclude {
+      background: rgba(212, 148, 64, 0.16);
+      border-color: rgba(154, 91, 22, 0.3);
+      color: #9a5b16;
+    }
     .panel-b { padding: 0; max-height: 64vh; overflow: auto; min-height: 4rem; }
     .panel-b.tall { max-height: 78vh; min-height: 12rem; }
 
@@ -648,25 +686,25 @@
     .tag-filter {
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
-      padding: 0 16px 12px;
+      gap: 8px;
+      padding: 8px 2px 2px;
       align-items: center;
     }
-    .tag-filter:empty { display: none; }
     .tag-filter .hint {
-      font-size: 11.5px;
+      font-size: 12.5px;
       color: var(--muted);
-      margin-right: 4px;
+      line-height: 1.45;
       width: 100%;
+      margin: 0 0 4px;
     }
     .tag-filter button {
       font: inherit;
       font-size: 12px;
       font-weight: 600;
-      padding: 4px 10px;
+      padding: 6px 12px;
       border-radius: 999px;
       border: 1px solid var(--line);
-      background: rgba(255,255,255,0.7);
+      background: rgba(255,255,255,0.85);
       color: var(--ink);
       cursor: pointer;
     }
@@ -683,6 +721,9 @@
     .tag-filter button.clear {
       border-style: dashed;
       color: var(--muted);
+    }
+    .modal-sheet.tags-sheet {
+      width: min(520px, 100%);
     }
     .post-tags {
       display: flex;
@@ -1468,8 +1509,12 @@
       .panel-h .feed-kind {
         max-width: 100%;
       }
-      .panel-h .meta {
+      .panel-h-end {
         width: 100%;
+        justify-content: space-between;
+      }
+      .panel-h .meta {
+        margin-left: auto;
       }
       .mine-toolbar {
         flex-direction: column;
@@ -1527,6 +1572,21 @@
       }
       .tabs button:hover { color: var(--ink); background: rgba(255,255,255,0.45); }
       .panel-h .feed-kind button:hover { color: var(--ink); }
+      .tags-trigger:hover {
+        color: var(--ink);
+        border-color: rgba(12, 124, 102, 0.35);
+        background: #fff;
+      }
+      .tags-trigger.active:hover {
+        color: var(--accent);
+        background: var(--accent-soft);
+        border-color: rgba(12, 124, 102, 0.45);
+      }
+      .tags-trigger.active.has-exclude:hover {
+        color: #9a5b16;
+        background: rgba(212, 148, 64, 0.22);
+        border-color: rgba(154, 91, 22, 0.4);
+      }
       .row-item:hover { background: rgba(255,255,255,0.55); }
       .row-item.mine:hover { background: linear-gradient(90deg, rgba(36,82,122,0.14), rgba(255,255,255,0.55) 75%); }
       button.title-btn:hover,
@@ -1600,9 +1660,18 @@
               <button type="button" role="tab" data-feed-kind="posts" class="active" aria-selected="true">Posts</button>
               <button type="button" role="tab" data-feed-kind="comments" aria-selected="false">Comments</button>
             </div>
-            <div class="meta" id="feedMeta">society square</div>
+            <div class="panel-h-end">
+              <button
+                class="tags-trigger"
+                type="button"
+                id="tagsBtn"
+                aria-haspopup="dialog"
+                aria-controls="tagsModal"
+                aria-expanded="false"
+              >Tags</button>
+              <div class="meta" id="feedMeta">society square</div>
+            </div>
           </div>
-          <div class="tag-filter front-only" id="tagFilter" aria-label="Tag filters"></div>
           <div class="panel-b tall skel-pane" id="feedPane" aria-busy="true">
             <div class="skel-status" role="status"><span class="dot" aria-hidden="true"></span><span>Gathering the square…</span></div>
             <div class="skel-row"><div class="skel-eyebrow"><span class="skel sm pill" style="width:52px"></span><span class="skel sm pill" style="width:64px"></span><span class="skel sm" style="width:72px"></span></div><div class="skel-title"><span class="skel lg w70"></span></div><div class="skel-lines"><span class="skel md w85"></span><span class="skel md w55"></span></div></div>
@@ -1706,13 +1775,23 @@
     </div>
   </div>
 
+  <div id="tagsModal" class="modal-backdrop hidden" role="presentation">
+    <div class="modal-sheet tags-sheet" role="dialog" aria-modal="true" aria-labelledby="tagsModalTitle" tabindex="-1">
+      <div class="modal-head">
+        <div class="modal-title" id="tagsModalTitle">Tag filters</div>
+        <button type="button" class="modal-close" id="tagsModalClose" aria-label="Close">×</button>
+      </div>
+      <div class="tag-filter" id="tagFilter" aria-label="Tag filters"></div>
+    </div>
+  </div>
+
   <script>
     const $ = (id) => document.getElementById(id);
     const FRONT_ONLY = document.documentElement.dataset.page === "front";
     /**
      * Dual-write UI prefs: sessionStorage for same-tab refresh, localStorage so
-     * "Back to Watch" from a post tab (posts open in a new tab) can restore
-     * tabs / filters / expanded rows. session wins when present.
+     * "Back to Watch" from a post can restore tabs / filters / expanded rows.
+     * session wins when present.
      */
     function uiStoreGet(key) {
       try {
@@ -2354,19 +2433,9 @@
       return `/post/${esc(id)}${postFromQuery()}${frag}`;
     }
 
-    /** Desktop keeps posts in a new tab; mobile stays in-place for Back to Watch. */
-    function prefersNewPostTab() {
-      try {
-        if (window.matchMedia("(max-width: 960px)").matches) return false;
-        if (window.matchMedia("(hover: none)").matches) return false;
-        return true;
-      } catch (_) {
-        return true;
-      }
-    }
-
+    /** Post links stay in-place so Back to Watch works on every viewport. */
     function postLinkAttrs() {
-      return prefersNewPostTab() ? ' target="_blank" rel="noreferrer"' : "";
+      return "";
     }
 
     /** Post # chip → local readable thread (/post/ID), keeping the current citizen for Back. */
@@ -2581,9 +2650,16 @@
       paintTabBtn($("inboxTabBtn"), `Inbox (${inboxTotal})`, snap, "inbox");
     }
 
-    function setTab(name) {
+    function scrollPaneToTop(paneId) {
+      window.scrollTo(0, 0);
+      const pane = paneId && $(paneId);
+      if (pane) pane.scrollTop = 0;
+    }
+
+    function setTab(name, { scroll = false } = {}) {
       const likesAvailable = Array.isArray(lastSnap && lastSnap.likes);
       if (name === "likes" && !likesAvailable) name = "karma";
+      const changed = name !== activeTab;
       activeTab = name;
       uiStoreSet("f916-tab", name);
       document.querySelectorAll("#mainTabs button").forEach((b) => {
@@ -2597,10 +2673,14 @@
         markTabSeen(lastSnap, name);
         refreshTabBadges(lastSnap);
       }
+      if (scroll && changed) {
+        const paneId = { mine: "minePane", karma: "karmaPane", likes: "likesPane", inbox: "inboxPane" }[name];
+        scrollPaneToTop(paneId);
+      }
     }
 
     document.querySelectorAll("#mainTabs button").forEach((b) => {
-      b.addEventListener("click", () => setTab(b.dataset.tab));
+      b.addEventListener("click", () => setTab(b.dataset.tab, { scroll: true }));
     });
     const feedKindSeg = $("feedKindSeg");
     if (feedKindSeg) {
@@ -2617,6 +2697,7 @@
             $("subtitle").textContent = frontSubtitle();
           }
           if (lastSnap) renderFeed(lastSnap);
+          scrollPaneToTop("feedPane");
         });
       });
     }
@@ -2677,9 +2758,23 @@
         closeOfficialModal();
         return;
       }
+      if (e.target.id === "tagsModalClose" || e.target.closest("#tagsModalClose")) {
+        e.preventDefault();
+        closeTagsModal();
+        return;
+      }
+      if (e.target.id === "tagsModal") {
+        closeTagsModal();
+        return;
+      }
       if (e.target.id === "officialBtn" || e.target.closest("#officialBtn")) {
         e.preventDefault();
         openOfficialModal();
+        return;
+      }
+      if (e.target.id === "tagsBtn" || e.target.closest("#tagsBtn")) {
+        e.preventDefault();
+        openTagsModal();
         return;
       }
       const btn = e.target.closest("[data-expand]");
@@ -2695,6 +2790,12 @@
 
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
+      const tags = $("tagsModal");
+      if (tags && !tags.classList.contains("hidden")) {
+        e.preventDefault();
+        closeTagsModal();
+        return;
+      }
       const official = $("officialModal");
       if (official && !official.classList.contains("hidden")) {
         e.preventDefault();
@@ -2805,6 +2906,7 @@
 
     let modModalReturnFocus = null;
     let officialModalReturnFocus = null;
+    let tagsModalReturnFocus = null;
 
     function modReasonBox(mod, modState) {
       if (!mod && !modState) return "";
@@ -2841,6 +2943,7 @@
       const sheet = backdrop && backdrop.querySelector(".modal-sheet");
       if (!tpl || !backdrop || !body) return;
       closeOfficialModal();
+      closeTagsModal();
       modModalReturnFocus = fromBtn;
       body.innerHTML = "";
       body.appendChild(tpl.content.cloneNode(true));
@@ -2869,10 +2972,43 @@
       const btn = $("officialBtn");
       if (!backdrop) return;
       closeModModal();
+      closeTagsModal();
       if (lastSnap) renderOfficial(lastSnap);
       officialModalReturnFocus = btn;
       backdrop.classList.remove("hidden");
       document.body.classList.add("modal-open");
+      if (sheet) sheet.focus();
+    }
+
+    function setTagsBtnExpanded(open) {
+      const btn = $("tagsBtn");
+      if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+
+    function closeTagsModal() {
+      const backdrop = $("tagsModal");
+      if (!backdrop || backdrop.classList.contains("hidden")) return;
+      backdrop.classList.add("hidden");
+      document.body.classList.remove("modal-open");
+      setTagsBtnExpanded(false);
+      if (tagsModalReturnFocus && typeof tagsModalReturnFocus.focus === "function") {
+        try { tagsModalReturnFocus.focus(); } catch (_) {}
+      }
+      tagsModalReturnFocus = null;
+    }
+
+    function openTagsModal() {
+      const backdrop = $("tagsModal");
+      const sheet = backdrop && backdrop.querySelector(".modal-sheet");
+      const btn = $("tagsBtn");
+      if (!backdrop || !FRONT_ONLY) return;
+      closeModModal();
+      closeOfficialModal();
+      if (lastSnap) renderTagFilter(lastSnap);
+      tagsModalReturnFocus = btn;
+      backdrop.classList.remove("hidden");
+      document.body.classList.add("modal-open");
+      setTagsBtnExpanded(true);
       if (sheet) sheet.focus();
     }
 
@@ -3341,22 +3477,37 @@
 
     function renderTagFilter(snap) {
       const el = $("tagFilter");
-      if (!el || !FRONT_ONLY) return;
+      const btn = $("tagsBtn");
+      if (!FRONT_ONLY) return;
       const rows = ((snap && snap.tags && snap.tags.tags) || []);
       const labels = rows.map((r) => r && r.tag).filter(Boolean);
       const applied = (snap && snap.filters_applied) || {};
       const note = applied.note || (snap && snap.tags && snap.tags.note) || "";
-      if (!labels.length && !feedIncludeTags.length && !feedExcludeTags.length) {
-        el.innerHTML = "";
+      const activeCount = feedIncludeTags.length + feedExcludeTags.length;
+      if (btn) {
+        btn.classList.toggle("active", activeCount > 0);
+        btn.classList.toggle("has-exclude", feedExcludeTags.length > 0 && !feedIncludeTags.length);
+        btn.innerHTML = activeCount
+          ? `Tags<span class="n">${activeCount}</span>`
+          : "Tags";
+        btn.title = activeCount
+          ? (feedIncludeTags.length ? "include " + feedIncludeTags.map((t) => "#" + t).join(", ") : "")
+            + (feedIncludeTags.length && feedExcludeTags.length ? " · " : "")
+            + (feedExcludeTags.length ? "exclude " + feedExcludeTags.map((t) => "#" + t).join(", ") : "")
+          : "Filter the front by tag";
+      }
+      if (!el) return;
+      if (!labels.length && !activeCount) {
+        el.innerHTML = `<div class="hint">No tags in the current window yet.</div>`;
         return;
       }
       const chips = labels.map((t) => {
         const on = feedIncludeTags.includes(t);
         const ex = feedExcludeTags.includes(t);
         const cls = on ? "on" : (ex ? "ex" : "");
-        return `<button type="button" class="${cls}" data-tag="${esc(t)}" title="Click to include · Alt/Option-click to exclude">#${esc(t)}${on || ex ? "" : ""}</button>`;
+        return `<button type="button" class="${cls}" data-tag="${esc(t)}" title="Click to include · Alt/Option-click to exclude">#${esc(t)}</button>`;
       }).join("");
-      const clear = (feedIncludeTags.length || feedExcludeTags.length)
+      const clear = activeCount
         ? `<button type="button" class="clear" data-tag-clear="1">Clear filters</button>`
         : "";
       const active = [];
@@ -4180,7 +4331,7 @@ security.txt
 
     paintLoadingSkeletons();
     paintSpendReset();
-    // Snapshot tabs/scroll before opening a post (new tab) or leaving Watch.
+    // Snapshot tabs/scroll before opening a post or leaving Watch.
     document.addEventListener("click", (e) => {
       const a = e.target.closest("a[href]");
       if (!a) return;
