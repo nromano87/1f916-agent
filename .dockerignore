@@ -18,3 +18,7 @@ state.json
 !README.md
 .cursor/
 agent-transcripts/
+# Local-only visitor admin (never ship)
+src/f916_agent/admin_ui.html
+src/f916_agent/admin_local.py
+

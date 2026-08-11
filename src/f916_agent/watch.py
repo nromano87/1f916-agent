@@ -33,6 +33,12 @@ from .public_allowance import (
 from .threads import fetch_threads
 from .votes import load_vote_log
 
+# Optional local-only visitor admin (gitignored — absent on public deploys).
+try:
+    from . import admin_local as _admin_local
+except ImportError:  # pragma: no cover
+    _admin_local = None  # type: ignore[assignment]
+
 API_LOCAL_RE = re.compile(r"^/api/local/([a-z-]+)/?$")
 
 # Post #483 (known_windows audit): framing is the sharp risk on a listed
@@ -89,6 +95,7 @@ RESERVED_ROOTS = {
     "api",
     "post",
     "local",
+    "admin",
     "hits",
     "front",
     "citizens",
@@ -3851,6 +3858,12 @@ def make_handler(
                 path in ("/", "/index.html", "/hits", "/front", "/citizens", "/treasury", "/docket", "/provenance")
                 or HANDLE_RE.match(path)
                 or path == "/local"
+                or (
+                    path == "/admin"
+                    and _admin_local is not None
+                    and _admin_local.available()
+                    and _admin_local.is_loopback(self)
+                )
             ):
                 self.send_response(200)
                 self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -3867,6 +3880,11 @@ def make_handler(
             path = parsed.path
             qs = parse_qs(parsed.query or "")
             set_nocount = self._apply_nocount_qs(qs)
+
+            if _admin_local is not None and _admin_local.try_handle_get(
+                self, store, path
+            ):
+                return
 
             # Cheap liveness — Fly health checks must not compete with snapshots.
             if path == "/healthz":
@@ -4288,6 +4306,12 @@ def serve(
     print("  {}".format(url))
     print("  data: {}".format(store.root))
     print("  read-only — engage lives in 1f916-operator")
+    if (
+        _admin_local is not None
+        and _admin_local.available()
+        and host in ("127.0.0.1", "localhost", "::1")
+    ):
+        print("  admin (localhost only): {}admin".format(url))
     print("  Ctrl+C to stop")
     if open_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
