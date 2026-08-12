@@ -12,6 +12,7 @@
   var VID_KEY = "f916_vid";
   var FULL_KEY = "f916_chat_full";
   var CACHE_KEY = "f916_chat_cache";
+  var SCROLL_KEY = "f916_chat_scroll";
 
   function mintVid() {
     try {
@@ -49,6 +50,41 @@
   }
 
   var visitorId = loadVisitorId();
+  var PRESENCE_MS = 25000;
+  var presenceStarted = false;
+
+  function presencePage() {
+    var parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+    if (!parts.length) return "front";
+    var h = parts[0];
+    if (parts.length === 1 && !RESERVED[String(h).toLowerCase()]) return h;
+    if (h === "citizens") return "_home";
+    return String(h).toLowerCase();
+  }
+
+  function beatPresence() {
+    if (!visitorId) return;
+    var qs =
+      "vid=" +
+      encodeURIComponent(visitorId) +
+      "&page=" +
+      encodeURIComponent(presencePage());
+    try {
+      fetch("/api/presence?" + qs, { cache: "no-store", keepalive: true }).catch(
+        function () {}
+      );
+    } catch (_) {}
+  }
+
+  function startPresence() {
+    if (presenceStarted) return;
+    presenceStarted = true;
+    beatPresence();
+    setInterval(beatPresence, PRESENCE_MS);
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) beatPresence();
+    });
+  }
 
   var logEl = null;
   var ignoreEl = null;
@@ -69,6 +105,11 @@
   var lastMsgs = [];
   var ignored = {};
   var myName = "";
+  var scrollAnchor = null;
+  var restoringScroll = false;
+  var saveScrollTimer = null;
+  var scrollReady = false;
+  var holdScrollCapture = false;
 
   function readStoredSeen() {
     try {
@@ -105,6 +146,33 @@
   } catch (_) {}
   try {
     full = sessionStorage.getItem(FULL_KEY) === "1";
+  } catch (_) {}
+
+  function readScrollAnchor() {
+    try {
+      var raw =
+        sessionStorage.getItem(SCROLL_KEY) || localStorage.getItem(SCROLL_KEY);
+      if (!raw) return null;
+      var data = JSON.parse(raw);
+      if (!data || typeof data !== "object") return null;
+      var id = parseInt(data.id, 10) || 0;
+      if (data.bottom) return { bottom: true, id: id };
+      if (id > 0) return { bottom: false, id: id };
+    } catch (_) {}
+    return null;
+  }
+
+  function writeScrollAnchor(anchor) {
+    scrollAnchor = anchor;
+    try {
+      var v = JSON.stringify(anchor || { bottom: true, id: 0 });
+      sessionStorage.setItem(SCROLL_KEY, v);
+      localStorage.setItem(SCROLL_KEY, v);
+    } catch (_) {}
+  }
+
+  try {
+    scrollAnchor = readScrollAnchor();
   } catch (_) {}
 
   function loadIgnored() {
@@ -290,6 +358,8 @@
     healthz: 1,
   };
 
+  startPresence();
+
   function linkMentions(text) {
     return String(text || "").replace(
       /(?<![A-Za-z0-9._%+-])@([A-Za-z0-9][A-Za-z0-9_-]{1,31})(?![A-Za-z0-9_-])/g,
@@ -326,6 +396,88 @@
     return out;
   }
 
+  function lastVisibleId(msgs) {
+    var list = visibleMessages(msgs || lastMsgs || []);
+    if (!list.length) return 0;
+    return parseInt(list[list.length - 1].id, 10) || 0;
+  }
+
+  function msgOffsetTop(el) {
+    if (!logEl || !el) return 0;
+    return (
+      el.getBoundingClientRect().top -
+      logEl.getBoundingClientRect().top +
+      logEl.scrollTop
+    );
+  }
+
+  function findMsgEl(id) {
+    if (!logEl || !id) return null;
+    var exact = logEl.querySelector('.msg[data-id="' + id + '"]');
+    if (exact) return exact;
+    var nodes = logEl.querySelectorAll(".msg[data-id]");
+    for (var i = 0; i < nodes.length; i++) {
+      if ((parseInt(nodes[i].getAttribute("data-id"), 10) || 0) >= id) {
+        return nodes[i];
+      }
+    }
+    return nodes.length ? nodes[nodes.length - 1] : null;
+  }
+
+  function nearBottom() {
+    if (!logEl) return true;
+    return logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 64;
+  }
+
+  function captureScrollAnchor() {
+    if (!logEl || restoringScroll || !open || !scrollReady || holdScrollCapture) return;
+    if (nearBottom()) {
+      writeScrollAnchor({ bottom: true, id: lastVisibleId() });
+      return;
+    }
+    var viewTop = logEl.getBoundingClientRect().top;
+    var nodes = logEl.querySelectorAll(".msg[data-id]");
+    var found = 0;
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].getBoundingClientRect().bottom > viewTop + 8) {
+        found = parseInt(nodes[i].getAttribute("data-id"), 10) || 0;
+        break;
+      }
+    }
+    if (found) writeScrollAnchor({ bottom: false, id: found });
+    else writeScrollAnchor({ bottom: true, id: lastVisibleId() });
+  }
+
+  function restoreScroll(opts) {
+    if (!logEl) return;
+    var follow = !!(opts && opts.follow);
+    var anchor = scrollAnchor || readScrollAnchor();
+    restoringScroll = true;
+    if (!anchor) {
+      logEl.scrollTop = logEl.scrollHeight;
+    } else if (anchor.bottom) {
+      var firstNew = findMsgEl((anchor.id || 0) + 1);
+      var lastEl = findMsgEl(anchor.id);
+      if (!follow && firstNew && lastEl && firstNew !== lastEl) {
+        logEl.scrollTop = msgOffsetTop(firstNew);
+      } else {
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+    } else {
+      var el = findMsgEl(anchor.id);
+      logEl.scrollTop = el ? msgOffsetTop(el) : logEl.scrollHeight;
+    }
+    restoringScroll = false;
+    scrollReady = true;
+  }
+
+  function scheduleRestoreScroll(opts) {
+    restoreScroll(opts);
+    requestAnimationFrame(function () {
+      restoreScroll(opts);
+    });
+  }
+
   function paintExpand() {
     var btn = panel.querySelector(".expand");
     if (!btn) return;
@@ -347,6 +499,7 @@
   }
 
   function setFull(next) {
+    if (open) captureScrollAnchor();
     full = !!next;
     panel.classList.toggle("full", full);
     syncOverlay();
@@ -354,9 +507,12 @@
     try {
       sessionStorage.setItem(FULL_KEY, full ? "1" : "0");
     } catch (_) {}
+    if (open) scheduleRestoreScroll();
   }
 
   function setOpen(next) {
+    var wasOpen = open;
+    if (wasOpen && !next) captureScrollAnchor();
     open = !!next;
     panel.classList.toggle("open", open);
     syncOverlay();
@@ -370,6 +526,7 @@
     markSeen();
     if (open) {
       paintBadge(0);
+      scheduleRestoreScroll();
       if (textEl) {
         if (!nameEl.value) nameEl.focus();
         else textEl.focus();
@@ -526,10 +683,9 @@
           "</div></div>"
       );
     }
-    var atBottom =
-      logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight < 64;
+    if (open) captureScrollAnchor();
     logEl.innerHTML = html.join("");
-    if (open && atBottom) logEl.scrollTop = logEl.scrollHeight;
+    restoreScroll({ follow: open });
   }
 
   function updateBadgeFromMsgs(msgs) {
@@ -632,6 +788,17 @@
       else setOpen(false);
     });
 
+    logEl.addEventListener("scroll", function () {
+      if (restoringScroll || !open) return;
+      if (saveScrollTimer) clearTimeout(saveScrollTimer);
+      saveScrollTimer = setTimeout(captureScrollAnchor, 120);
+    });
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden && open) captureScrollAnchor();
+    });
+    window.addEventListener("pagehide", function () {
+      if (open) captureScrollAnchor();
+    });
     logEl.addEventListener("click", function (e) {
       var btn = e.target.closest("[data-ignore]");
       if (!btn) return;
@@ -709,12 +876,17 @@
         if (data.message) {
           latestId = Math.max(latestId, data.message.id || 0);
         }
+        holdScrollCapture = true;
+        writeScrollAnchor({ bottom: true, id: lastVisibleId() });
         await poll();
+        writeScrollAnchor({ bottom: true, id: lastVisibleId() });
         markSeen();
         paintBadge(0);
+        scheduleRestoreScroll({ follow: true });
       } catch (_) {
         if (errEl) errEl.textContent = "network error";
       } finally {
+        holdScrollCapture = false;
         sendBtn.disabled = false;
         textEl.focus();
       }

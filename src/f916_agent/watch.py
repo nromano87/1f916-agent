@@ -728,6 +728,67 @@ def read_hits(store: Store) -> Dict[str, Any]:
     return {"total": total_n, "pages": pages}
 
 
+_PRESENCE_LOCK = threading.Lock()
+_PRESENCE: Dict[str, Dict[str, Any]] = {}
+_PRESENCE_TTL_SEC = 75
+_PRESENCE_MAX = 8000
+
+
+def touch_presence(visitor_id: str, page: str = "") -> Dict[str, Any]:
+    """Record that a guestbook vid is currently on a page (in-memory)."""
+    vid = _normalize_vid(visitor_id)
+    if not vid:
+        return {"ok": False, "error": "invalid vid"}
+    key = _normalize_hit_key(page) if page else ""
+    now = int(time.time())
+    with _PRESENCE_LOCK:
+        _PRESENCE[vid] = {"t": now, "page": key}
+        if len(_PRESENCE) > _PRESENCE_MAX:
+            cutoff = now - _PRESENCE_TTL_SEC
+            stale = [v for v, row in _PRESENCE.items() if int(row.get("t") or 0) < cutoff]
+            for v in stale:
+                _PRESENCE.pop(v, None)
+            # Still oversized — drop oldest.
+            if len(_PRESENCE) > _PRESENCE_MAX:
+                oldest = sorted(
+                    _PRESENCE.items(), key=lambda kv: int(kv[1].get("t") or 0)
+                )
+                for v, _ in oldest[: max(0, len(_PRESENCE) - _PRESENCE_MAX)]:
+                    _PRESENCE.pop(v, None)
+    return {"ok": True, "vid": vid, "page": key, "t": now}
+
+
+def concurrent_viewers(
+    *, ttl_sec: int = _PRESENCE_TTL_SEC
+) -> Dict[str, Any]:
+    """Vids with a presence beat inside the TTL window."""
+    now = int(time.time())
+    cutoff = now - max(15, int(ttl_sec or _PRESENCE_TTL_SEC))
+    live: List[Dict[str, Any]] = []
+    with _PRESENCE_LOCK:
+        stale = [v for v, row in _PRESENCE.items() if int(row.get("t") or 0) < cutoff]
+        for v in stale:
+            _PRESENCE.pop(v, None)
+        for vid, row in _PRESENCE.items():
+            t = int(row.get("t") or 0)
+            if t < cutoff:
+                continue
+            live.append(
+                {
+                    "vid": vid,
+                    "page": str(row.get("page") or "") or None,
+                    "t": t,
+                    "age_sec": max(0, now - t),
+                }
+            )
+    live.sort(key=lambda r: (-int(r["t"]), str(r["vid"])))
+    return {
+        "concurrent": len(live),
+        "ttl_sec": max(15, int(ttl_sec or _PRESENCE_TTL_SEC)),
+        "viewers": live,
+    }
+
+
 _WATCHLIST_REPORT_LOCK = threading.Lock()
 _WATCHLIST_HANDLE_RE = re.compile(r"^[A-Za-z0-9_-]{2,32}$")
 _WATCHLIST_MAX_HANDLES = 24
@@ -1525,6 +1586,15 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     if (k === "society_mention") return "@me";
     return k || "inbox";
   }}
+  function todayCount(n) {{
+    const v = Number(n);
+    return Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+  }}
+  function todayPill(n, one, many) {{
+    const v = todayCount(n);
+    const label = v + " " + (v === 1 ? one : many) + " today";
+    return '<span class="pill' + (v > 0 ? "" : " muted") + '">' + esc(label) + "</span>";
+  }}
 
   async function load() {{
     const wl = window.f916Watchlist;
@@ -1556,7 +1626,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
       const cards = [];
       let newTotal = 0;
       for (const h of handles) {{
-        const c = byKey[h.toLowerCase()] || {{ handle: h, error: "missing", inbox: {{ items: [], counts: {{ total: 0 }} }}, item_ids: [] }};
+        const c = byKey[h.toLowerCase()] || {{ handle: h, error: "missing", inbox: {{ items: [], counts: {{ total: 0 }} }}, item_ids: [], posts_today: 0, comments_today: 0 }};
         const ids = wl.itemIdsFromCitizen(c);
         const unseen = wl.unseenCount(c.handle || h, ids);
         newTotal += unseen;
@@ -1585,6 +1655,8 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
           '<a class="handle" href="/' + encodeURIComponent(c.handle || h) + '">' + esc(c.handle || h) + "</a>" +
           (c.model ? '<span class="pill muted">' + esc(c.model) + "</span>" : "") +
           '<span class="pill">karma ' + esc(c.karma ?? "—") + "</span>" +
+          todayPill(c.posts_today, "post", "posts") +
+          todayPill(c.comments_today, "comment", "comments") +
           '<span class="pill' + (unseen > 0 ? " warn" : "") + '">inbox ' + esc(total) +
             (unseen > 0 ? (" · " + unseen + " new") : "") + "</span>" +
           '<div class="card-actions">' +
@@ -2846,6 +2918,8 @@ def build_watchlist_inbox(
                     "error": "citizen not found",
                     "inbox": {"items": [], "counts": {"total": 0}},
                     "item_ids": [],
+                    "posts_today": 0,
+                    "comments_today": 0,
                 }
             )
             continue
@@ -2872,6 +2946,7 @@ def build_watchlist_inbox(
             own_posts.append(p)
             own_ids.add(pid)
         own_comments = [c for c in all_comments if c.get("author") == h]
+        today = _allowance_from_ledger(own_posts, own_comments)
         entry: Dict[str, Any] = {
             "handle": h,
             "model": person.get("model"),
@@ -2880,6 +2955,8 @@ def build_watchlist_inbox(
             "error": None,
             "inbox": {"items": [], "counts": {"total": 0}},
             "item_ids": [],
+            "posts_today": int(today.get("posts_today") or 0),
+            "comments_today": int(today.get("comments_today") or 0),
         }
         try:
             activity = _load_public_inbox(
@@ -3071,10 +3148,17 @@ def _allowance_from_ledger(
     Votes cast are not listed publicly, so votes_remaining stays unknown.
     """
     midnight = _utc_day_start_ms()
-    posts_today = sum(1 for p in posts if int(p.get("created_at") or 0) >= midnight)
-    comments_today = sum(
-        1 for c in comments if int(c.get("created_at") or 0) >= midnight
-    )
+
+    def _today_count(rows: List[Dict[str, Any]]) -> int:
+        n = 0
+        for row in rows:
+            ms = _created_ms(row.get("created_at"))
+            if ms is not None and ms >= midnight:
+                n += 1
+        return n
+
+    posts_today = _today_count(posts)
+    comments_today = _today_count(comments)
     return {
         "posts_remaining": max(0, posts_per_day - posts_today),
         "comments_remaining": max(0, comments_per_day - comments_today),
@@ -5015,6 +5099,8 @@ def make_handler(
                         hits = dict(hits)
                         # counted=false only for nocount; return visits still "count"
                         hits["counted"] = True
+                    # Presence for concurrent viewers (admin) — even on nocount.
+                    touch_presence(vid, page)
                     raw = json.dumps(hits, ensure_ascii=False).encode("utf-8")
                     self._send(
                         200,
@@ -5025,6 +5111,15 @@ def make_handler(
                 except Exception as e:  # pragma: no cover
                     raw = json.dumps({"error": str(e)}).encode("utf-8")
                     self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/presence":
+                page = (qs.get("page") or [""])[0]
+                vid = (qs.get("vid") or [""])[0]
+                payload = touch_presence(vid, page)
+                code = 200 if payload.get("ok") else 400
+                raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send(code, raw, "application/json; charset=utf-8")
                 return
 
             m_snap = API_SNAP_RE.match(path)
