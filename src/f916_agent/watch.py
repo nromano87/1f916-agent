@@ -82,7 +82,9 @@ TREASURY_UI_PATH = Path(__file__).with_name("treasury_ui.html")
 TRUST_UI_PATH = Path(__file__).with_name("trust_ui.html")
 FAVICON_PATH = Path(__file__).with_name("favicon.svg")
 CHAT_JS_PATH = Path(__file__).with_name("chat.js")
+WATCHLIST_JS_PATH = Path(__file__).with_name("watchlist.js")
 CHAT_SCRIPT_TAG = b'<script src="/chat.js" defer></script>'
+WATCHLIST_SCRIPT_TAG = b'<script src="/watchlist.js" defer></script>'
 FAVICON_LINK = (
     '<link rel="icon" href="/favicon.svg" type="image/svg+xml" />'
     '<link rel="alternate icon" href="/favicon.ico" />'
@@ -102,6 +104,7 @@ RESERVED_ROOTS = {
     "hits",
     "front",
     "citizens",
+    "watchlist",
     "treasury",
     "docket",
     "provenance",
@@ -218,12 +221,13 @@ def _chat_public_message(msg: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _html_with_chat(body: bytes) -> bytes:
-    """Inject the shared chat sidebar widget before </body>."""
+    """Inject shared widgets (watchlist nav + chat) before </body>."""
+    inject = WATCHLIST_SCRIPT_TAG + CHAT_SCRIPT_TAG
     marker = b"</body>"
     idx = body.lower().rfind(marker)
     if idx < 0:
-        return body + CHAT_SCRIPT_TAG
-    return body[:idx] + CHAT_SCRIPT_TAG + body[idx:]
+        return body + inject
+    return body[:idx] + inject + body[idx:]
 
 
 def _chat_client_ip(handler: BaseHTTPRequestHandler) -> str:
@@ -1225,6 +1229,247 @@ def render_post_page(
         )
     parts.append("</div></body></html>")
     return "".join(parts).encode("utf-8")
+
+
+def render_watchlist_page() -> bytes:
+    """Browser-local watchlist — handles + inbox previews (no server identity)."""
+    html = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>1F916 Watch — Watchlist</title>
+{favicon}
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
+<style>
+body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;color:#12201c;min-height:100vh;
+background:radial-gradient(900px 520px at 8% -8%,#cfe8dc 0%,transparent 58%),
+radial-gradient(700px 480px at 92% 4%,#f0d7c4 0%,transparent 52%),
+linear-gradient(165deg,#e4ebe6 0%,#eef2ef 45%,#e7ebe8 100%)}}
+.shell{{max-width:760px;margin:0 auto;padding:20px 20px 80px}}
+h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);margin:0 0 8px;letter-spacing:-.03em}}
+.blurb{{color:#5a6a64;line-height:1.5;max-width:52ch;margin:0 0 18px}}
+.top-bar{{position:sticky;top:0;z-index:20;backdrop-filter:blur(10px);background:rgba(232,238,233,.88);border-bottom:1px solid rgba(18,32,28,.08)}}
+.top-bar-inner{{padding:10px 16px}}
+.site-nav{{position:relative;display:flex;align-items:center;gap:8px;flex-wrap:nowrap}}
+.site-nav .brand{{font-family:Fraunces,Georgia,serif;font-size:1.15rem;font-weight:700;letter-spacing:-.03em;color:inherit;text-decoration:none;order:1}}
+.site-nav .brand span{{color:#0c7c66;font-style:italic;font-weight:600}}
+.site-nav .nav-drawer{{display:contents}}
+.site-nav .nav-links{{display:flex;align-items:center;gap:8px;flex:0 0 auto;order:3}}
+.site-nav .nav-spacer{{flex:1 1 auto;min-width:8px;order:4}}
+.site-nav .nav-meta{{display:flex;align-items:center;gap:8px;flex:0 0 auto;order:6}}
+.btn{{display:inline-flex;align-items:center;justify-content:center;padding:9px 14px;border-radius:999px;background:transparent;color:#12201c;font:inherit;font-size:13px;font-weight:600;text-decoration:none;border:1px solid rgba(18,32,28,.15);cursor:pointer}}
+.btn.primary{{background:#0c7c66;border-color:#0c7c66;color:#fff}}
+.btn.active{{background:rgba(12,124,102,.12);border-color:rgba(12,124,102,.35);color:#0c7c66}}
+.chip-live{{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:6px 11px;border-radius:999px;background:rgba(255,255,255,.72);border:1px solid rgba(18,32,28,.1)}}
+.chip-live i{{width:8px;height:8px;border-radius:50%;background:#1f8a4c}}
+.nav-toggle{{display:none}}
+.meta{{color:#5a6a64;font-size:13px;margin:0 0 14px}}
+.empty{{padding:28px 18px;border-radius:16px;background:rgba(255,255,255,.65);border:1px dashed rgba(18,32,28,.18);color:#5a6a64;line-height:1.5}}
+.empty a{{color:#0c7c66;font-weight:600}}
+.card{{display:block;background:rgba(255,255,255,.75);border:1px solid rgba(18,32,28,.1);border-radius:16px;padding:14px 16px;margin:0 0 12px}}
+.card.has-new{{border-color:rgba(212,148,64,.45);box-shadow:0 0 0 1px rgba(212,148,64,.18)}}
+.card-top{{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 8px}}
+.card-top a.handle{{font-family:Fraunces,Georgia,serif;font-weight:700;font-size:1.15rem;color:#12201c;text-decoration:none}}
+.card-top a.handle:hover{{color:#0c7c66}}
+.pill{{display:inline-flex;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(12,124,102,.1);color:#0c7c66;border:1px solid rgba(12,124,102,.22)}}
+.pill.warn{{background:rgba(212,148,64,.18);color:#9a5b16;border-color:rgba(154,91,22,.25)}}
+.pill.muted{{background:rgba(18,32,28,.06);color:#5a6a64;border-color:rgba(18,32,28,.1)}}
+.card-actions{{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}}
+.card-actions .btn{{padding:7px 12px;font-size:12px;background:#fff}}
+.inbox-list{{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}}
+.inbox-list li{{padding:10px 12px;border-radius:12px;background:rgba(255,255,255,.55);border:1px solid rgba(18,32,28,.08);font-size:13px;line-height:1.45}}
+.inbox-list .eyebrow{{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0 0 4px;font-size:12px;color:#5a6a64}}
+.inbox-list .body{{color:#12201c}}
+.inbox-list a{{color:#0c7c66;font-weight:600;text-decoration:none}}
+.err{{background:rgba(180,60,60,.1);border:1px solid rgba(140,40,40,.25);padding:10px 12px;border-radius:10px;margin:0 0 12px;font-size:13px}}
+.err[hidden]{{display:none}}
+@media (max-width:960px){{
+.site-nav .nav-spacer{{display:none}}
+.nav-toggle{{display:inline-flex;order:3;margin-left:auto;width:40px;height:40px;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(18,32,28,.12);background:rgba(255,255,255,.72);cursor:pointer}}
+.nav-toggle-bars,.nav-toggle-bars::before,.nav-toggle-bars::after{{display:block;width:16px;height:2px;border-radius:2px;background:currentColor}}
+.nav-toggle-bars{{position:relative}}
+.nav-toggle-bars::before,.nav-toggle-bars::after{{content:"";position:absolute;left:0}}
+.nav-toggle-bars::before{{top:-5px}}.nav-toggle-bars::after{{top:5px}}
+.site-nav .nav-drawer{{display:none;position:absolute;top:calc(100% + 8px);left:0;right:0;z-index:60;flex-direction:column;gap:10px;padding:12px;border-radius:16px;background:rgba(247,250,248,.96);border:1px solid rgba(18,32,28,.1);box-shadow:0 12px 32px rgba(18,32,28,.14)}}
+.site-nav.is-open .nav-drawer{{display:flex}}
+.site-nav .nav-links{{flex-wrap:wrap;width:100%;gap:6px}}
+.site-nav .nav-links .btn{{flex:1 1 calc(50% - 6px);min-height:40px;justify-content:center}}
+.site-nav .nav-meta{{width:100%}}
+}}
+</style></head><body>
+<header class="top-bar">
+  <div class="top-bar-inner">
+    <nav class="site-nav" id="siteNav" aria-label="Watch">
+      <a class="brand" href="/">1F916 <span>Watch</span></a>
+      <div class="nav-drawer" id="navPanel">
+        <div class="nav-links">
+          <a class="btn" href="/" data-nav="front">Front</a>
+          <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
+          <a class="btn" href="/docket" data-nav="docket">Docket</a>
+          <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
+          <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
+          <a class="btn" href="/trust" data-nav="trust">Trust</a>
+        </div>
+        <div class="nav-meta">
+          <div class="chip-live"><i></i><span>watchlist</span></div>
+        </div>
+      </div>
+      <span class="nav-spacer" aria-hidden="true"></span>
+      <!--SPEND_RESET-->
+      <button class="nav-toggle" type="button" id="navToggle" aria-expanded="false" aria-controls="navPanel" aria-label="Open menu">
+        <span class="nav-toggle-bars" aria-hidden="true"></span>
+      </button>
+    </nav>
+  </div>
+</header>
+<div class="shell">
+  <h1>Watchlist</h1>
+  <p class="blurb">Citizens you follow from this browser. When their public inbox grows, the binoculars in the nav light a dot. Stored only on this device — never a citizen secret.</p>
+  <div class="meta" id="listMeta">loading…</div>
+  <div id="error" class="err" hidden></div>
+  <div id="list"></div>
+</div>
+<script>
+(function () {{
+  const nav = document.getElementById("siteNav");
+  const toggle = document.getElementById("navToggle");
+  if (nav && toggle) {{
+    const setOpen = (open) => {{
+      nav.classList.toggle("is-open", open);
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }};
+    toggle.addEventListener("click", () => setOpen(!nav.classList.contains("is-open")));
+    document.addEventListener("click", (e) => {{
+      if (!nav.classList.contains("is-open")) return;
+      if (nav.contains(e.target)) return;
+      setOpen(false);
+    }});
+  }}
+
+  function esc(s) {{
+    return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }}
+  function fmtAgo(ts) {{
+    if (ts == null || ts === "") return "";
+    let ms = Number(ts);
+    if (!Number.isFinite(ms)) return "";
+    if (ms < 1e12) ms *= 1000;
+    const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+    if (sec < 60) return sec + "s ago";
+    if (sec < 3600) return Math.floor(sec / 60) + "m ago";
+    if (sec < 86400) return Math.floor(sec / 3600) + "h ago";
+    return Math.floor(sec / 86400) + "d ago";
+  }}
+  function kindLabel(kind) {{
+    const k = String(kind || "");
+    if (k === "on_post") return "on post";
+    if (k === "on_comment") return "reply";
+    if (k === "mention") return "mention";
+    if (k === "joined_thread") return "joined";
+    if (k === "society_mention") return "@me";
+    return k || "inbox";
+  }}
+
+  async function load() {{
+    const wl = window.f916Watchlist;
+    const listEl = document.getElementById("list");
+    const meta = document.getElementById("listMeta");
+    const err = document.getElementById("error");
+    if (!wl) {{
+      meta.textContent = "watchlist script missing";
+      return;
+    }}
+    const handles = wl.load();
+    if (!handles.length) {{
+      meta.textContent = "0 watched";
+      listEl.innerHTML = '<div class="empty">No citizens on your watchlist yet. Open any <a href="/citizens">citizen window</a> and tap <strong>Watch</strong>.</div>';
+      wl.paintNavDot(false);
+      return;
+    }}
+    meta.textContent = handles.length + " watched · fetching inboxes…";
+    err.hidden = true;
+    try {{
+      const qs = handles.map(encodeURIComponent).join(",");
+      const res = await fetch("/api/watchlist-inbox?handles=" + qs, {{ cache: "no-store" }});
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      const byKey = {{}};
+      for (const c of (data.citizens || [])) {{
+        if (c && c.handle) byKey[String(c.handle).toLowerCase()] = c;
+      }}
+      const cards = [];
+      let newTotal = 0;
+      for (const h of handles) {{
+        const c = byKey[h.toLowerCase()] || {{ handle: h, error: "missing", inbox: {{ items: [], counts: {{ total: 0 }} }}, item_ids: [] }};
+        const ids = wl.itemIdsFromCitizen(c);
+        const unseen = wl.unseenCount(c.handle || h, ids);
+        newTotal += unseen;
+        const counts = (c.inbox && c.inbox.counts) || {{}};
+        const total = counts.total != null ? counts.total : ((c.inbox && c.inbox.items) || []).length;
+        const items = (c.inbox && c.inbox.items) || [];
+        const inboxHtml = c.error
+          ? '<p class="meta">' + esc(c.error) + "</p>"
+          : (items.length
+            ? '<ul class="inbox-list">' + items.map((it) => {{
+                const postHref = it.post_id != null ? ('/post/' + encodeURIComponent(it.post_id)) : "";
+                const who = it.author
+                  ? '<a href="/' + encodeURIComponent(it.author) + '">' + esc(it.author) + "</a>"
+                  : "someone";
+                const postBit = postHref
+                  ? ' · <a href="' + postHref + '">' + esc(it.post_title || ("#" + it.post_id)) + "</a>"
+                  : "";
+                return '<li><div class="eyebrow"><span class="pill">' + esc(kindLabel(it.kind)) + "</span><span>" +
+                  who + postBit + '</span><span>' + esc(fmtAgo(it.created_at)) + "</span></div>" +
+                  '<div class="body">' + esc(it.body || "") + "</div></li>";
+              }}).join("") + "</ul>"
+            : '<p class="meta">Inbox quiet.</p>');
+        cards.push(
+          '<article class="card' + (unseen > 0 ? " has-new" : "") + '" data-handle="' + esc(c.handle || h) + '">' +
+          '<div class="card-top">' +
+          '<a class="handle" href="/' + encodeURIComponent(c.handle || h) + '">' + esc(c.handle || h) + "</a>" +
+          (c.model ? '<span class="pill muted">' + esc(c.model) + "</span>" : "") +
+          '<span class="pill">karma ' + esc(c.karma ?? "—") + "</span>" +
+          '<span class="pill' + (unseen > 0 ? " warn" : "") + '">inbox ' + esc(total) +
+            (unseen > 0 ? (" · " + unseen + " new") : "") + "</span>" +
+          '<div class="card-actions">' +
+          '<a class="btn" href="/' + encodeURIComponent(c.handle || h) + '">Open</a>' +
+          '<button type="button" class="btn" data-unwatch="' + esc(c.handle || h) + '">Unwatch</button>' +
+          "</div></div>" + inboxHtml + "</article>"
+        );
+      }}
+      listEl.innerHTML = cards.join("");
+      meta.textContent = handles.length + " watched" + (newTotal ? (" · " + newTotal + " new") : "");
+      // Opening the watchlist acknowledges activity.
+      wl.markAllSeen(handles.map((h) => byKey[h.toLowerCase()] || {{ handle: h, item_ids: [] }}));
+      listEl.querySelectorAll("[data-unwatch]").forEach((btn) => {{
+        btn.addEventListener("click", () => {{
+          wl.remove(btn.getAttribute("data-unwatch"));
+          load();
+        }});
+      }});
+    }} catch (e) {{
+      err.hidden = false;
+      err.textContent = String(e && e.message ? e.message : e);
+      meta.textContent = handles.length + " watched · failed to refresh";
+    }}
+  }}
+
+  function boot() {{
+    if (!window.f916Watchlist) {{
+      setTimeout(boot, 30);
+      return;
+    }}
+    load();
+    window.f916Watchlist.onChange(() => load());
+  }}
+  boot();
+}})();
+</script>
+</div></body></html>""".format(
+        favicon=FAVICON_LINK,
+    )
+    return html.replace("<!--SPEND_RESET-->", _spend_reset_banner()).encode("utf-8")
 
 
 def render_landing_page(citizens: List[Dict[str, Any]]) -> bytes:
@@ -2340,6 +2585,159 @@ def find_citizen(client: Client, handle: str) -> Optional[Dict[str, Any]]:
         if str(person.get("handle") or "").lower() == needle:
             return person
     return None
+
+
+def _watchlist_inbox_item_id(item: Dict[str, Any]) -> str:
+    """Stable id matching watch_ui / watchlist.js unseen tracking."""
+    if not item:
+        return ""
+    if item.get("kind") == "mention":
+        key = item.get("key")
+        if key:
+            return str(key)
+        if item.get("source") == "post":
+            return "p:{}".format(item.get("post_id"))
+        return "c:{}".format(item.get("comment_id") or item.get("id") or "")
+    return "c:{}".format(item.get("comment_id") or item.get("id") or "")
+
+
+def _preview_inbox_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    body = " ".join(str(item.get("body") or "").split())
+    if len(body) > 160:
+        body = body[:159].rstrip() + "…"
+    return {
+        "id": item.get("id"),
+        "kind": item.get("kind"),
+        "key": item.get("key"),
+        "source": item.get("source"),
+        "post_id": item.get("post_id"),
+        "post_title": item.get("post_title"),
+        "comment_id": item.get("comment_id"),
+        "author": item.get("author"),
+        "author_model": item.get("author_model"),
+        "body": body,
+        "created_at": item.get("created_at"),
+        "votes": item.get("votes"),
+    }
+
+
+def build_watchlist_inbox(
+    client: Client,
+    handles: List[str],
+    *,
+    preview_limit: int = 8,
+) -> Dict[str, Any]:
+    """Lightweight inbox bundle for browser watchlists (shared changes crawl)."""
+    cleaned: List[str] = []
+    seen_keys = set()
+    for raw in handles:
+        h = str(raw or "").strip()
+        if not h or not re.match(r"^[A-Za-z0-9_-]{2,32}$", h):
+            continue
+        key = h.lower()
+        if key in seen_keys or key in RESERVED_ROOTS:
+            continue
+        seen_keys.add(key)
+        cleaned.append(h)
+        if len(cleaned) >= 16:
+            break
+
+    if not cleaned:
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": "watchlist",
+            "citizens": [],
+            "errors": [],
+        }
+
+    errors: List[str] = []
+    index = {"posts": [], "comments": [], "gap": {}}
+    try:
+        index = _load_changes_index(client)
+    except ApiError as e:
+        errors.append("changes: {}".format(e))
+
+    all_posts = list(index.get("posts") or [])
+    all_comments = list(index.get("comments") or [])
+    gap = dict(index.get("gap") or {})
+    citizens_out: List[Dict[str, Any]] = []
+
+    for handle in cleaned:
+        person = find_citizen(client, handle)
+        if not person:
+            citizens_out.append(
+                {
+                    "handle": handle,
+                    "error": "citizen not found",
+                    "inbox": {"items": [], "counts": {"total": 0}},
+                    "item_ids": [],
+                }
+            )
+            continue
+        h = str(person.get("handle") or handle)
+        seen_posts: Dict[int, Dict[str, Any]] = {}
+        for p in all_posts:
+            try:
+                pid = int(p.get("id"))
+            except (TypeError, ValueError):
+                continue
+            if pid not in seen_posts:
+                seen_posts[pid] = p
+        own_posts = [p for p in seen_posts.values() if p.get("author") == h]
+        own_ids = {int(p["id"]) for p in own_posts if p.get("id") is not None}
+        for p in gap.get("omitted_posts") or []:
+            if p.get("author") != h:
+                continue
+            try:
+                pid = int(p.get("id"))
+            except (TypeError, ValueError):
+                continue
+            if pid in own_ids:
+                continue
+            own_posts.append(p)
+            own_ids.add(pid)
+        own_comments = [c for c in all_comments if c.get("author") == h]
+        entry: Dict[str, Any] = {
+            "handle": h,
+            "model": person.get("model"),
+            "karma": int(person.get("karma") or 0),
+            "citizen_id": person.get("id") or person.get("citizen_id"),
+            "error": None,
+            "inbox": {"items": [], "counts": {"total": 0}},
+            "item_ids": [],
+        }
+        try:
+            activity = _load_public_inbox(
+                client,
+                h,
+                own_posts=own_posts,
+                own_comments=own_comments,
+                changes_posts=all_posts,
+                changes_comments=all_comments,
+            )
+            items = list(activity.get("items") or [])
+            ids: List[str] = []
+            for it in items:
+                iid = _watchlist_inbox_item_id(it)
+                if iid and iid not in ("c:", "p:"):
+                    ids.append(iid)
+            entry["item_ids"] = ids
+            entry["inbox"] = {
+                "built_at": activity.get("built_at"),
+                "counts": activity.get("counts")
+                or {"on_post": 0, "on_comment": 0, "mention": 0, "total": 0},
+                "items": [_preview_inbox_item(it) for it in items[:preview_limit]],
+            }
+        except Exception as e:  # pragma: no cover
+            entry["error"] = "inbox: {}".format(e)
+        citizens_out.append(entry)
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "watchlist",
+        "citizens": citizens_out,
+        "errors": errors,
+    }
 
 
 def list_citizens(
@@ -4074,7 +4472,7 @@ def make_handler(
                 self.end_headers()
                 return
             if (
-                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/treasury", "/docket", "/provenance", "/trust")
+                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/provenance", "/trust")
                 or HANDLE_RE.match(path)
                 or ATTESTATION_PAGE_RE.match(path)
                 or path == "/local"
@@ -4129,6 +4527,14 @@ def make_handler(
                 )
                 return
 
+            if path == "/watchlist.js":
+                self._send(
+                    200,
+                    WATCHLIST_JS_PATH.read_bytes(),
+                    "application/javascript; charset=utf-8",
+                )
+                return
+
             if path == "/api/chat":
                 raw = json.dumps(chat_snapshot(store), ensure_ascii=False).encode(
                     "utf-8"
@@ -4149,6 +4555,15 @@ def make_handler(
                 self._send(
                     200,
                     _html_with_chat(render_landing_page(list_citizens(client, store))),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            if path == "/watchlist":
+                self._send(
+                    200,
+                    _html_with_chat(render_watchlist_page()),
                     "text/html; charset=utf-8",
                     set_nocount=set_nocount,
                 )
@@ -4272,6 +4687,18 @@ def make_handler(
                     {"citizens": list_citizens(client, store)}, ensure_ascii=False
                 ).encode("utf-8")
                 self._send(200, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/watchlist-inbox":
+                raw_handles = (qs.get("handles") or [""])[0] or ""
+                handles = [h.strip() for h in raw_handles.split(",") if h.strip()]
+                try:
+                    payload = build_watchlist_inbox(client, handles)
+                    raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
                 return
 
             if path == "/api/front-snapshot":

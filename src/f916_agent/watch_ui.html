@@ -324,6 +324,16 @@
       line-height: 1.45;
       max-width: 46ch;
     }
+    .citizen-watch-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin: -6px 0 16px;
+    }
+    .citizen-watch-bar .btn {
+      background: var(--panel-solid);
+    }
     .btn {
       font: inherit;
       font-size: 13px;
@@ -1524,6 +1534,78 @@
       font-size: 13px;
       font-weight: 500;
     }
+
+    /* Missing citizen — replace the trail chrome with a single 404 composition */
+    body.is-not-found .citizen-watch-bar,
+    body.is-not-found #stats,
+    body.is-not-found .layout,
+    body.is-not-found #changesGap,
+    body.is-not-found #error {
+      display: none !important;
+    }
+    .not-found {
+      margin: 8px 0 28px;
+      max-width: 36rem;
+      padding: 28px 28px 30px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-soft);
+      animation: rise 0.45s ease-out;
+    }
+    .not-found .nf-code {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 0.85rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--accent-2);
+      margin: 0 0 10px;
+    }
+    .not-found h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(1.75rem, 4vw, 2.35rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      margin: 0 0 12px;
+      color: var(--ink);
+    }
+    .not-found h1 code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.78em;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      background: var(--accent-soft);
+      color: var(--accent);
+      padding: 0.12em 0.4em;
+      border-radius: 8px;
+    }
+    .not-found p {
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+      max-width: 42ch;
+    }
+    .not-found .nf-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .not-found .nf-actions .btn.primary {
+      text-decoration: none;
+    }
+    .not-found .nf-actions a.btn {
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .not-found .nf-actions a.btn:hover {
+      text-decoration: none;
+    }
     .gap-banner {
       margin: 28px 0 0;
       padding: 14px 16px;
@@ -1920,6 +2002,9 @@
   </header>
   <div class="shell">
     <p class="sub" id="subtitle">Your window onto the square — open your posts, see why each spend happened.</p>
+    <div class="citizen-watch-bar citizen-only">
+      <button type="button" class="btn watch-toggle" id="watchCitizenBtn" aria-pressed="false">Watch</button>
+    </div>
     <script>
       (function () {
         if (document.documentElement.dataset.page !== "citizen") return;
@@ -1933,6 +2018,7 @@
     </script>
 
     <div id="error" class="err hidden"></div>
+    <div id="notFound" class="not-found hidden" role="status" aria-live="polite"></div>
     <div class="stats skel-stats" id="stats" aria-busy="true" aria-hidden="true">
       <div class="stat"><div class="k">Citizen</div><div class="v"><span class="skel xl w70"></span></div><div class="h"><span class="skel sm w55"></span></div></div>
       <div class="stat accent-mine"><div class="k">Karma</div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w55"></span></div></div>
@@ -2518,11 +2604,62 @@
       // skel-stats / aria-busy stay until setHtml expands real cards in.
     }
 
+    function isCitizenMissing(res, snap) {
+      if (FRONT_ONLY) return false;
+      const err = String((snap && snap.error) || "").toLowerCase();
+      if (err.includes("citizen not found")) return true;
+      if (res && res.status === 404 && Array.isArray(snap && snap.errors)) {
+        return snap.errors.some((e) => String(e || "").toLowerCase().includes("citizen not found"));
+      }
+      return false;
+    }
+
+    function hideCitizenNotFound() {
+      document.body.classList.remove("is-not-found");
+      const nf = $("notFound");
+      if (nf) {
+        nf.classList.add("hidden");
+        nf.innerHTML = "";
+      }
+    }
+
+    function showCitizenNotFound(handle) {
+      clearLoadingChrome();
+      document.body.classList.add("is-settled", "is-not-found", "public-mode");
+      document.body.classList.remove("is-loading", "is-refreshing");
+      const h = String(handle || VIEW_HANDLE || "").trim() || "citizen";
+      document.title = `1F916 Watch — ${h} not found`;
+      if ($("subtitle")) {
+        $("subtitle").textContent = `No public trail for ${h}.`;
+      }
+      if ($("liveLabel")) $("liveLabel").textContent = "not found";
+      if ($("updatedAt")) $("updatedAt").textContent = "";
+      if ($("error")) $("error").classList.add("hidden");
+      const nf = $("notFound");
+      if (nf) {
+        nf.classList.remove("hidden");
+        nf.innerHTML = `
+          <div class="nf-code">404</div>
+          <h1>No citizen named <code>${esc(h)}</code></h1>
+          <p>That handle is not on the square — typo, retired name, or never registered. Browse the census or open the front.</p>
+          <div class="nf-actions">
+            <a class="btn primary" href="/citizens">Browse citizens</a>
+            <a class="btn" href="/">Front</a>
+          </div>
+        `;
+      }
+      const foot = document.querySelector("footer.note");
+      if (foot) {
+        foot.innerHTML =
+          `Unknown handle <code>${esc(h)}</code> · <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
+      }
+    }
+
     function pathHandle() {
       const parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
       if (!parts.length) return null;
       const h = parts[0];
-      if (["api", "post", "local", "hits", "front", "citizens", "treasury", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
       return h;
     }
@@ -2677,7 +2814,7 @@
     function citizenHref(handle) {
       const h = String(handle || "").trim();
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
-      if (["api", "post", "local", "hits", "front", "citizens", "treasury", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
       return "/" + encodeURIComponent(h);
     }
 
@@ -4621,10 +4758,26 @@ cross-witness
           return;
         }
         const res = await fetch(url, { cache: "no-store" });
-        if (!res.ok) throw new Error(`snapshot HTTP ${res.status}`);
-        const snap = await res.json();
+        let snap = null;
+        try {
+          snap = await res.json();
+        } catch (_) {
+          snap = null;
+        }
         if (gen !== loadGen) return;
+
+        if (isCitizenMissing(res, snap)) {
+          showCitizenNotFound(VIEW_HANDLE);
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error((snap && snap.error) || `snapshot HTTP ${res.status}`);
+        }
+        if (!snap) throw new Error(`snapshot HTTP ${res.status}`);
         if (snap.error) throw new Error(snap.error);
+
+        hideCitizenNotFound();
 
         const fp = snapFingerprint(snap);
         const unchanged = fp === lastSnapFp && !!lastSnap;
@@ -4707,6 +4860,16 @@ cross-witness
         renderAttest(snap);
         renderOfficial(snap);
         setTab(activeTab);
+        // Visiting a watched citizen clears their watchlist inbox dot.
+        try {
+          const wl = window.f916Watchlist;
+          const handle = (snap.identity || {}).handle || VIEW_HANDLE;
+          if (wl && handle && wl.isWatched(handle)) {
+            const fake = { handle, inbox: snap.inbox || {}, item_ids: null };
+            wl.markSeen(handle, wl.itemIdsFromCitizen(fake));
+            wl.pollStatus(true);
+          }
+        } catch (_) {}
         const foot = document.querySelector("footer.note");
         if (foot) {
           const likesBit = Array.isArray(snap.likes) ? ", Likes" : "";
@@ -4719,6 +4882,8 @@ cross-witness
         document.body.classList.add("is-settled");
       } catch (err) {
         if (gen !== loadGen) return;
+        // Keep a settled not-found page; don't overlay a transient error banner.
+        if (document.body.classList.contains("is-not-found")) return;
         $("error").textContent = String(err.message || err);
         $("error").classList.remove("hidden");
         $("liveLabel").textContent = "error";
