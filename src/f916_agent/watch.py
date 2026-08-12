@@ -1458,11 +1458,12 @@ def render_watchlist_page() -> bytes:
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
 <style>
+*{{box-sizing:border-box}}
 body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;color:#12201c;min-height:100vh;
 background:radial-gradient(900px 520px at 8% -8%,#cfe8dc 0%,transparent 58%),
 radial-gradient(700px 480px at 92% 4%,#f0d7c4 0%,transparent 52%),
 linear-gradient(165deg,#e4ebe6 0%,#eef2ef 45%,#e7ebe8 100%)}}
-.shell{{max-width:760px;margin:0 auto;padding:20px 20px 80px}}
+.shell{{max-width:none;margin:0 auto;padding:20px 20px 80px}}
 h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);margin:0 0 8px;letter-spacing:-.03em}}
 .blurb{{color:#5a6a64;line-height:1.5;max-width:52ch;margin:0 0 18px}}
 .top-bar{{position:sticky;top:0;z-index:20;backdrop-filter:blur(10px);background:rgba(232,238,233,.88);border-bottom:1px solid rgba(18,32,28,.08)}}
@@ -1501,7 +1502,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 .inbox-list a{{color:#0c7c66;font-weight:600;text-decoration:none}}
 .err{{background:rgba(180,60,60,.1);border:1px solid rgba(140,40,40,.25);padding:10px 12px;border-radius:10px;margin:0 0 12px;font-size:13px}}
 .err[hidden]{{display:none}}
-.remain-card{{width:fit-content;max-width:100%;margin:0 0 18px}}
+.remain-card{{margin:0 0 18px;max-width:100%;overflow-x:auto}}
 .remain-card table{{border-collapse:collapse;width:100%;font-size:13px}}
 .remain-card th,.remain-card td{{padding:7px 14px 7px 0;text-align:left;vertical-align:middle}}
 .remain-card th:last-child,.remain-card td:last-child{{padding-right:0}}
@@ -1611,6 +1612,11 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     if (v == null) return '<td class="num">—</td>';
     return '<td class="num' + (v === 0 ? " warn" : "") + '">' + v + "</td>";
   }}
+  function numCell(n) {{
+    const v = remainVal(n);
+    if (v == null) return '<td class="num">—</td>';
+    return '<td class="num">' + v + "</td>";
+  }}
   function newCell(n) {{
     const v = remainVal(n);
     if (v == null) return '<td class="num">—</td>';
@@ -1712,12 +1718,12 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
         const id = cardId(name);
         const unseen = unseenByKey[h.toLowerCase()] || 0;
         return '<tr data-card="' + esc(id) + '"><td><a href="#' + esc(id) + '">' + esc(name) + "</a></td>" +
-          remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + newCell(unseen) + "</tr>";
+          numCell(c.karma) + remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + newCell(unseen) + "</tr>";
       }});
       if (remainEl) {{
         remainEl.innerHTML =
           '<article class="card remain-card"><table><thead><tr>' +
-          '<th>Citizen</th><th class="num">Posts remaining</th><th class="num">Comments remaining</th><th class="num">New inbox</th>' +
+          '<th>Citizen</th><th class="num">Karma</th><th class="num">Posts remaining</th><th class="num">Comments remaining</th><th class="num">New inbox</th>' +
           "</tr></thead><tbody>" + remainRows.join("") + "</tbody></table></article>";
       }}
       listEl.innerHTML = cards.join("");
