@@ -261,6 +261,7 @@
     "#f916-chat-log .msg .ignore{border:0;background:rgba(18,32,28,.05);color:#5a6a64;font:600 12px/1 \"DM Sans\",system-ui,sans-serif;cursor:pointer;padding:8px 10px;border-radius:999px;min-height:32px;}" +
     "#f916-chat-log .msg .ignore:active{background:rgba(212,85,42,.12);color:#d4552a;}" +
     "#f916-chat-log .msg .body{font-size:16px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}" +
+    "#f916-chat-log .msg .body mark.mention-hl{background:linear-gradient(180deg,rgba(212,148,64,.55) 0%,rgba(212,148,64,.28) 100%);color:inherit;padding:0.05em 0.2em;margin:0 -0.05em;border-radius:0.25em;box-decoration-break:clone;-webkit-box-decoration-break:clone;font-weight:650;}" +
     "#f916-chat-ignored{padding:0 14px 12px;border-bottom:1px solid rgba(18,32,28,.06);font-size:13px;color:#5a6a64;display:none;}" +
     "#f916-chat-ignored.show{display:block;}" +
     "#f916-chat-ignored .label{font-weight:700;margin-bottom:8px;font-size:12px;letter-spacing:.02em;text-transform:uppercase;color:#8a9892;}" +
@@ -273,8 +274,6 @@
     "#f916-chat-form #f916-chat-name-chip{border:0;background:transparent;color:#5a6a64;font:600 12px/1.2 \"DM Sans\",system-ui,sans-serif;cursor:pointer;padding:2px 0;text-align:left;}" +
     "#f916-chat-form #f916-chat-name-chip strong{color:#0c7c66;font-weight:700;}" +
     "#f916-chat-form #f916-chat-name-chip:active{color:#12201c;}" +
-    "#f916-chat .msg .body a.who-link{color:#0c7c66;font-weight:600;text-decoration:none;}" +
-    "@media (hover:hover) and (pointer:fine){#f916-chat .msg .body a.who-link:hover{text-decoration:underline;}}" +
     "#f916-chat-form #f916-chat-name{width:100%;font:inherit;font-size:16px;border:1px solid rgba(18,32,28,.14);border-radius:10px;padding:8px 10px;background:#fff;color:#12201c;}" +
     "#f916-chat-form .compose{display:flex;align-items:flex-end;gap:8px;}" +
     "#f916-chat-form textarea{flex:1;min-width:0;width:auto;font:inherit;font-size:16px;border:1px solid rgba(18,32,28,.14);border-radius:12px;padding:10px 12px;background:#fff;color:#12201c;min-height:42px;max-height:96px;resize:none;line-height:1.35;field-sizing:content;}" +
@@ -360,24 +359,22 @@
 
   startPresence();
 
-  function linkMentions(text) {
-    return String(text || "").replace(
-      /(?<![A-Za-z0-9._%+-])@([A-Za-z0-9][A-Za-z0-9_-]{1,31})(?![A-Za-z0-9_-])/g,
-      function (full, h) {
-        if (RESERVED[String(h).toLowerCase()]) return full;
-        return (
-          '<a class="who-link" href="/' +
-          encodeURIComponent(h) +
-          '">@' +
-          esc(h) +
-          "</a>"
-        );
-      }
+  function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function highlightOwnHandle(html) {
+    var h = String(myName || "").trim();
+    if (!h || h.length < 2) return html;
+    var re = new RegExp(
+      "(?<![A-Za-z0-9_-])(" + escapeRegExp(h) + ")(?![A-Za-z0-9_-])",
+      "gi"
     );
+    return String(html || "").replace(re, '<mark class="mention-hl">$1</mark>');
   }
 
   function formatBody(text) {
-    return linkMentions(esc(text));
+    return highlightOwnHandle(esc(text));
   }
 
   function ago(ts) {
@@ -817,6 +814,7 @@
     });
     nameEl.addEventListener("blur", function () {
       var name = (nameEl.value || "").trim();
+      var prev = myName;
       if (name) {
         myName = name;
         try {
@@ -824,6 +822,7 @@
         } catch (_) {}
       }
       paintNameRow(false);
+      if (myName !== prev) renderAll();
     });
     nameEl.addEventListener("keydown", function (e) {
       if (e.key !== "Enter") return;
