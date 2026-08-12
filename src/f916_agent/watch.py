@@ -3960,6 +3960,24 @@ def build_trust_snapshot(client: Client) -> Dict[str, Any]:
         witnesses = client.witnesses() or {}
     except ApiError as e:
         errors.append("witnesses: {}".format(e))
+    for row in list(witnesses.get("witnesses") or []):
+        if not isinstance(row, dict):
+            continue
+        try:
+            wid = int(row.get("id"))
+        except (TypeError, ValueError):
+            continue
+        try:
+            hist = client.witness_history(wid) or {}
+        except ApiError as e:
+            errors.append("witnesses/{}/history: {}".format(wid, e))
+            row["history"] = {"error": str(e), "events": []}
+            continue
+        row["history"] = {
+            "events": list(hist.get("events") or []),
+            "chained": hist.get("chained"),
+            "predates_chaining": hist.get("predates_chaining"),
+        }
     try:
         attestations = client.attestations() or {}
     except ApiError as e:

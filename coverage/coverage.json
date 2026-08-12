@@ -440,7 +440,21 @@
       "requires": [
         "witnesses[].name",
         "witnesses[].url",
-        "how_to_join"
+        "how_to_join",
+        "directory_contract"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/witnesses/:id/history",
+      "surface": "/trust witnesses section (per-witness register/rotate history)",
+      "why": null,
+      "probe": "/api/witnesses/1/history",
+      "requires": [
+        "witness.id",
+        "witness.name",
+        "events",
+        "chained"
       ]
     },
     {

@@ -176,6 +176,14 @@
     .off-win-links { margin-top: 6px; font-size: 12px; }
     .off-foot { font-size: 12px; color: var(--muted); line-height: 1.5; }
     .off-loading { margin: 8px 0; color: var(--muted); font-size: 13px; }
+    .hist { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+    .hist-h { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9892; margin: 0 0 8px; }
+    .hist-event {
+      padding: 8px 10px; border-radius: 10px; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line); margin: 0 0 6px;
+    }
+    .hist-event .top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 4px; }
+    .hist-event .btn { padding: 4px 10px; font-size: 11px; }
   </style>
 </head>
 <body>
@@ -196,9 +204,9 @@
   <div class="shell">
     <h1>Trust</h1>
     <p class="blurb">
-      Signed checkpoints, the witness directory, and the attestation ledger —
-      plus tools to fetch inclusion and consistency proofs. Read-only; this
-      window never holds a citizen key.
+      Signed checkpoints, the witness directory with chained key history, and
+      the attestation ledger — plus tools to fetch inclusion and consistency
+      proofs. Read-only; this window never holds a citizen key.
     </p>
     <div class="meta" id="boardMeta">loading…</div>
     <div id="error" class="err" hidden></div>
@@ -434,15 +442,60 @@
 
       document.getElementById("witnessLead").textContent =
         wit.how_to_join || "Independent countersigners. A pointer, not an endorsement.";
-      document.getElementById("witnessList").innerHTML = witnesses.map((w) => {
+      const contract = wit.directory_contract
+        ? '<p class="note" style="margin:0 0 12px">' + esc(wit.directory_contract) + "</p>"
+        : "";
+      const witnessCards = witnesses.map((w) => {
+        const hist = w.history || {};
+        const events = Array.isArray(hist.events) ? hist.events : [];
+        let histHtml = '<div class="hist"><div class="hist-h">Key history</div>';
+        if (hist.error) {
+          histHtml += '<p class="note">' + esc(hist.error) + "</p>";
+        } else if (events.length) {
+          histHtml += events.map((ev) => {
+            const eid = ev && ev.id;
+            return '<div class="hist-event"><div class="top">'
+              + '<span class="pill">' + esc((ev && ev.kind) || "event") + "</span>"
+              + (eid != null ? '<span class="pill">#' + esc(eid) + "</span>" : "")
+              + '<span class="pill">' + esc(fmtWhen(ev && ev.created_at)) + "</span>"
+              + (eid != null
+                ? '<button type="button" class="btn" data-proof-event="' + esc(eid) + '">Prove</button>'
+                : "")
+              + "</div>"
+              + (ev && ev.detail ? '<div class="note">' + esc(ev.detail) + "</div>" : "")
+              + (ev && ev.hash ? '<div class="note mono">hash ' + esc(shortHash(ev.hash)) + "</div>" : "")
+              + "</div>";
+          }).join("");
+        } else if (hist.predates_chaining) {
+          histHtml += '<p class="note">' + esc(hist.predates_chaining) + "</p>";
+        } else {
+          histHtml += '<p class="note">No chained register/rotate events recorded.</p>';
+        }
+        if (hist.chained) {
+          histHtml += '<p class="note" style="margin-top:8px">' + esc(hist.chained) + "</p>";
+        }
+        histHtml += "</div>";
         return '<article class="row"><div class="top">'
           + '<span class="pill">' + esc(w.operator || "witness") + "</span>"
+          + (w.id != null ? '<span class="pill">#' + esc(w.id) + "</span>" : "")
+          + (w.epoch != null ? '<span class="pill">epoch ' + esc(w.epoch) + "</span>" : "")
           + (w.public_key ? '<span class="pill mono">' + esc(shortHash(w.public_key)) + "</span>" : '<span class="pill">no public key</span>')
           + '</div><div class="title">' + esc(w.name || "—") + "</div>"
           + '<div class="links">' + (w.url ? externalLink(w.url, "open") : "") + "</div>"
           + (w.note ? '<p class="note" style="margin-top:6px">' + esc(w.note) + "</p>" : "")
+          + histHtml
           + "</article>";
-      }).join("") || '<p class="note">No witnesses listed.</p>';
+      }).join("");
+      document.getElementById("witnessList").innerHTML =
+        contract + (witnessCards || '<p class="note">No witnesses listed.</p>');
+      document.getElementById("witnessList").querySelectorAll("[data-proof-event]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          document.getElementById("proofLog").value = "identity_events";
+          document.getElementById("proofEvent").value = btn.getAttribute("data-proof-event") || "";
+          document.getElementById("proofSec").scrollIntoView({ behavior: "smooth", block: "start" });
+          document.getElementById("proofEvent").focus();
+        });
+      });
 
       document.getElementById("attestLead").textContent =
         att.how_to_verify || "Claims on the square — signed when a bound key is offered.";

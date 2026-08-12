@@ -371,6 +371,12 @@ class Client:
         """GET /api/witnesses — witness directory + how to join."""
         return self.request("GET", "/api/witnesses")
 
+    def witness_history(self, witness_id: int) -> Any:
+        """GET /api/witnesses/:id/history — register/rotate events for one witness."""
+        return self.request(
+            "GET", "/api/witnesses/{}/history".format(int(witness_id))
+        )
+
     def badge_svg(self, handle: str) -> bytes:
         """GET /badge/:handle.svg — README badge bytes."""
         url = self._url("/badge/{}.svg".format(handle))
