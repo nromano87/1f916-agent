@@ -330,6 +330,167 @@
       "path": "/api/patron",
       "surface": null,
       "why": "Write, payment path. Out of scope for a viewer."
+    },
+    {
+      "method": "GET",
+      "path": "/api/attestations",
+      "surface": "/trust attestations section",
+      "why": null,
+      "requires": [
+        "attestations[].id",
+        "attestations[].class",
+        "attestations[].issuer",
+        "attestations[].subject",
+        "attestations[].claim",
+        "how_to_verify"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/attestations/:id",
+      "surface": "/attestations/:id",
+      "why": null,
+      "probe": "/api/attestations/1",
+      "requires": [
+        "attestation.id",
+        "attestation.claim",
+        "beside",
+        "chain_anchor"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/attestations",
+      "surface": null,
+      "why": "Write — issues an attestation under a bound key. A public window holds no key and must not mint claims."
+    },
+    {
+      "method": "GET",
+      "path": "/api/checkpoint",
+      "surface": "/trust checkpoints section",
+      "why": null,
+      "requires": [
+        "checkpoints[].log",
+        "checkpoints[].tree_size",
+        "checkpoints[].root",
+        "checkpoints[].sig",
+        "registry_public_key",
+        "how_to_verify"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/checkpoint/consistency",
+      "surface": "/trust consistency proof tool (via /api/consistency-snapshot)",
+      "why": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/checkpoint",
+      "surface": null,
+      "why": "Write, maintainer-only crank of the hourly checkpoint. Out of scope for a viewer."
+    },
+    {
+      "method": "GET",
+      "path": "/api/proof",
+      "surface": "/trust inclusion proof tool (via /api/proof-snapshot)",
+      "why": null,
+      "probe": "/api/proof?log=identity_events&event=15",
+      "requires": [
+        "log",
+        "event",
+        "checkpoint",
+        "proof",
+        "how_to_verify"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/record/:handle",
+      "surface": "/{handle} Record tab",
+      "why": null,
+      "probe": "/api/record/1f916-agent",
+      "requires": [
+        "handle",
+        "keys",
+        "seals",
+        "bindings",
+        "checkpoint",
+        "what_this_proves",
+        "verify_offline"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/badge/:handle.svg",
+      "surface": "/{handle} Record tab badge (proxied at /badge/:handle.svg)",
+      "why": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/bindings",
+      "surface": null,
+      "why": "Write — binds a domain to citizenship after TXT/.well-known proof. Authenticated write; public Watch never holds a bearer."
+    },
+    {
+      "method": "GET",
+      "path": "/api/witnesses",
+      "surface": "/trust witnesses section",
+      "why": null,
+      "requires": [
+        "witnesses[].name",
+        "witnesses[].url",
+        "how_to_join"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/witness",
+      "surface": null,
+      "why": "Write — registers a witness pointer. Authenticated; not a public-window action."
+    },
+    {
+      "method": "GET",
+      "path": "/api/seals",
+      "surface": "/{handle} Record tab (via /api/record seals + dossier)",
+      "why": null,
+      "probe": "/api/seals?citizen=1f916-agent",
+      "requires": [
+        "citizen",
+        "seals",
+        "verify"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/seal",
+      "surface": null,
+      "why": "Write — seals a content hash into the identity chain. A viewer must never sit next to a seal writer."
+    },
+    {
+      "method": "GET",
+      "path": "/api/keys/:handle",
+      "surface": "/{handle} Record tab keys",
+      "why": null,
+      "probe": "/api/keys/1f916-agent",
+      "requires": [
+        "handle",
+        "keys[].thumbprint",
+        "keys[].custody",
+        "note"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/keys",
+      "surface": null,
+      "why": "Write — binds an Ed25519 key. Credential adjacency forbidden on a public window."
+    },
+    {
+      "method": "POST",
+      "path": "/api/keys/revoke",
+      "surface": null,
+      "why": "Write — revokes a bound key. Same: never adjacent to a public viewer."
     }
   ]
 }

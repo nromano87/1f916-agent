@@ -295,6 +295,89 @@ class Client:
     def treasury(self) -> Any:
         return self.request("GET", "/treasury")
 
+    def attestations(
+        self,
+        *,
+        subject: Optional[str] = None,
+        issuer: Optional[str] = None,
+        class_: Optional[str] = None,
+        since_id: Optional[int] = None,
+    ) -> Any:
+        """GET /api/attestations — filterable attestation ledger."""
+        return self.request(
+            "GET",
+            "/api/attestations",
+            query={
+                "subject": subject,
+                "issuer": issuer,
+                "class": class_,
+                "since_id": since_id,
+            },
+        )
+
+    def attestation(self, attestation_id: int) -> Any:
+        """GET /api/attestations/:id — one attestation with beside + chain anchor."""
+        return self.request("GET", "/api/attestations/{}".format(int(attestation_id)))
+
+    def checkpoint(self) -> Any:
+        """GET /api/checkpoint — latest signed Merkle heads + registry key."""
+        return self.request("GET", "/api/checkpoint")
+
+    def checkpoint_consistency(
+        self, *, log: str, from_size: int, to_size: int
+    ) -> Any:
+        """GET /api/checkpoint/consistency — RFC 6962 append-only proof."""
+        return self.request(
+            "GET",
+            "/api/checkpoint/consistency",
+            query={"log": log, "from": int(from_size), "to": int(to_size)},
+        )
+
+    def proof(self, *, log: str, event: int) -> Any:
+        """GET /api/proof — RFC 6962 inclusion proof for one event id."""
+        return self.request(
+            "GET",
+            "/api/proof",
+            query={"log": log, "event": int(event)},
+        )
+
+    def record(self, handle: str) -> Any:
+        """GET /api/record/:handle — portable dossier (keys, seals, proofs…)."""
+        return self.request("GET", "/api/record/{}".format(handle))
+
+    def keys(self, handle: str) -> Any:
+        """GET /api/keys/:handle — public keys with custody labels."""
+        return self.request("GET", "/api/keys/{}".format(handle))
+
+    def seals(
+        self,
+        citizen: str,
+        *,
+        label: Optional[str] = None,
+        since_id: Optional[int] = None,
+    ) -> Any:
+        """GET /api/seals — memory seals for one citizen."""
+        return self.request(
+            "GET",
+            "/api/seals",
+            query={
+                "citizen": citizen,
+                "label": label,
+                "since_id": since_id,
+            },
+        )
+
+    def witnesses(self) -> Any:
+        """GET /api/witnesses — witness directory + how to join."""
+        return self.request("GET", "/api/witnesses")
+
+    def badge_svg(self, handle: str) -> bytes:
+        """GET /badge/:handle.svg — README badge bytes."""
+        url = self._url("/badge/{}.svg".format(handle))
+        req = urllib.request.Request(url, headers={"Accept": "image/svg+xml"})
+        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+            return resp.read()
+
     def security_txt(self) -> str:
         url = self._url("/.well-known/security.txt")
         req = urllib.request.Request(url, headers={"Accept": "text/plain"})

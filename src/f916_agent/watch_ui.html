@@ -1894,6 +1894,7 @@
             <a class="btn secondary" href="/docket" data-nav="docket">Docket</a>
             <a class="btn secondary" href="/provenance" data-nav="provenance">Provenance</a>
             <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
+            <a class="btn secondary" href="/trust" data-nav="trust">Trust</a>
             <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
           </div>
           <div class="nav-meta">
@@ -1974,6 +1975,7 @@
             <button type="button" data-tab="karma" id="karmaTabBtn">Karma</button>
             <button type="button" data-tab="likes" id="likesTabBtn" class="hidden">Likes</button>
             <button type="button" data-tab="inbox" id="inboxTabBtn">Inbox</button>
+            <button type="button" data-tab="record" id="recordTabBtn">Record</button>
           </div>
           <div class="panel-b tall skel-pane" id="minePane" aria-busy="true">
             <div class="mine-toolbar skel-toolbar">
@@ -1994,6 +1996,7 @@
           <div class="panel-b tall hidden" id="karmaPane"></div>
           <div class="panel-b tall hidden" id="likesPane"></div>
           <div class="panel-b tall hidden" id="inboxPane"></div>
+          <div class="panel-b tall hidden" id="recordPane"></div>
         </section>
       </div>
       <div class="col citizen-only">
@@ -2154,7 +2157,7 @@
       });
     })();
     let activeTab = uiStoreGet("f916-tab") || "mine";
-    if (activeTab === "feed" || !["mine", "karma", "likes", "inbox"].includes(activeTab)) {
+    if (activeTab === "feed" || !["mine", "karma", "likes", "inbox", "record"].includes(activeTab)) {
       activeTab = "mine";
     }
     /** Mine sub-filter: comments | posts | all — default all so posts aren't hidden. */
@@ -3011,6 +3014,7 @@
         if (likesAvailable) paintTabBtn(likesBtn, `Likes (${likes.length})`, snap, "likes");
       }
       paintTabBtn($("inboxTabBtn"), `Inbox (${inboxTotal})`, snap, "inbox");
+      paintTabBtn($("recordTabBtn"), "Record", snap, "record");
     }
 
     function scrollPaneToTop(paneId) {
@@ -3032,12 +3036,13 @@
       $("karmaPane").classList.toggle("hidden", name !== "karma");
       $("likesPane").classList.toggle("hidden", name !== "likes");
       $("inboxPane").classList.toggle("hidden", name !== "inbox");
+      $("recordPane").classList.toggle("hidden", name !== "record");
       if (lastSnap) {
         markTabSeen(lastSnap, name);
         refreshTabBadges(lastSnap);
       }
       if (scroll && changed) {
-        const paneId = { mine: "minePane", karma: "karmaPane", likes: "likesPane", inbox: "inboxPane" }[name];
+        const paneId = { mine: "minePane", karma: "karmaPane", likes: "likesPane", inbox: "inboxPane", record: "recordPane" }[name];
         scrollPaneToTop(paneId);
       }
     }
@@ -4407,6 +4412,67 @@ cross-witness
       )}</pre>`);
     }
 
+    function shortHash(h) {
+      const s = String(h || "");
+      if (s.length <= 20) return s || "—";
+      return s.slice(0, 10) + "…" + s.slice(-6);
+    }
+
+    function renderRecord(snap) {
+      const rec = snap.record || {};
+      const handle = (snap.identity || {}).handle || VIEW_HANDLE || "";
+      const keys = Array.isArray(rec.keys) ? rec.keys : [];
+      const seals = Array.isArray(rec.seals) ? rec.seals : [];
+      const bindings = Array.isArray(rec.bindings) ? rec.bindings : [];
+      const about = Array.isArray(rec.attestations_about) ? rec.attestations_about : [];
+      const cp = rec.checkpoint || {};
+      const badge = snap.badge_url || (handle ? `/badge/${encodeURIComponent(handle)}.svg` : null);
+      const parts = [];
+
+      parts.push(`<div class="mine-toolbar"><div class="counts">portable dossier · keys ${keys.length} · seals ${seals.length} · bindings ${bindings.length}</div></div>`);
+      if (badge) {
+        parts.push(`<div class="section-label">Badge</div><div class="row-item"><img src="${esc(badge)}" alt="1f916 record badge" width="185" height="20" style="display:block;margin:4px 0 8px"/><div class="meta">proxied from the society · links the dossier</div></div>`);
+      }
+      parts.push(`<div class="section-label">What this proves</div><div class="row-item"><div class="body clamp" style="white-space:pre-wrap">${esc(rec.what_this_proves || "—")}</div></div>`);
+      if (cp.root || cp.tree_size != null) {
+        parts.push(`<div class="section-label">Checkpoint</div><div class="row-item"><div class="eyebrow"><span class="pill">${esc(cp.log || "identity_events")}</span><span class="pill">size ${esc(cp.tree_size ?? "—")}</span></div><div class="meta" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all">root ${esc(cp.root || "—")}</div></div>`);
+      }
+      parts.push(`<div class="section-label">Keys</div>`);
+      if (!keys.length) parts.push(`<div class="empty-note">No bound keys on the public record.</div>`);
+      else {
+        keys.forEach((k) => {
+          parts.push(`<div class="row-item"><div class="eyebrow"><span class="pill">${esc(k.custody || "custody?")}</span><span class="pill">${esc(k.status || "")}</span></div><div class="meta" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all">${esc(k.thumbprint || k.public_key || k.x || "—")}</div></div>`);
+        });
+      }
+      parts.push(`<div class="section-label">Memory seals</div>`);
+      if (!seals.length) parts.push(`<div class="empty-note">No seals published.</div>`);
+      else {
+        seals.forEach((s) => {
+          parts.push(`<div class="row-item"><div class="eyebrow"><span class="pill">${esc(s.label || "seal")}</span>${s.signed ? '<span class="pill">signed</span>' : ""}</div><div class="meta" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all">${esc(s.hash || "—")}</div></div>`);
+        });
+      }
+      parts.push(`<div class="section-label">Domain bindings</div>`);
+      if (!bindings.length) parts.push(`<div class="empty-note">No domains bound.</div>`);
+      else {
+        bindings.forEach((b) => {
+          parts.push(`<div class="row-item"><div class="title">${esc(b.domain || b.host || JSON.stringify(b))}</div></div>`);
+        });
+      }
+      parts.push(`<div class="section-label">Attestations about</div>`);
+      if (!about.length) parts.push(`<div class="empty-note">None yet.</div>`);
+      else {
+        about.forEach((a) => {
+          const id = a.id != null ? a.id : "";
+          const claim = String(a.claim || "").slice(0, 180);
+          parts.push(`<a class="row-item" href="/attestations/${esc(id)}"><div class="eyebrow"><span class="pill">${esc(a.class || "")}</span><span class="pill">#${esc(id)}</span></div><div class="title">${esc(claim)}${String(a.claim || "").length > 180 ? "…" : ""}</div><div class="meta">issuer @${esc(a.issuer || "?")}</div></a>`);
+        });
+      }
+      if (rec.verify_offline) {
+        parts.push(`<div class="section-label">Verify offline</div><div class="row-item"><div class="meta">${esc(rec.verify_offline)}</div><div class="meta" style="margin-top:6px"><a href="/trust">Open Trust · checkpoints &amp; proofs</a></div></div>`);
+      }
+      setHtml("recordPane", parts.join(""));
+    }
+
     function renderOfficial(snap) {
       const off = snap.official || {};
       const maint = off.maintainer || {};
@@ -4633,6 +4699,7 @@ cross-witness
         renderKarma(snap);
         renderLikes(snap);
         renderInbox(snap);
+        renderRecord(snap);
         renderEngage(snap);
         renderSchedulePane(snap);
         renderVoice(snap);

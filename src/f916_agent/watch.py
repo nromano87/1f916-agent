@@ -79,6 +79,7 @@ _HSTS_HEADER = ("Strict-Transport-Security", "max-age=63072000; includeSubDomain
 
 UI_PATH = Path(__file__).with_name("watch_ui.html")
 TREASURY_UI_PATH = Path(__file__).with_name("treasury_ui.html")
+TRUST_UI_PATH = Path(__file__).with_name("trust_ui.html")
 FAVICON_PATH = Path(__file__).with_name("favicon.svg")
 CHAT_JS_PATH = Path(__file__).with_name("chat.js")
 CHAT_SCRIPT_TAG = b'<script src="/chat.js" defer></script>'
@@ -90,6 +91,9 @@ POST_ID_RE = re.compile(r"^/post/(\d+)/?$")
 API_POST_RE = re.compile(r"^/api/post/(\d+)/?$")
 API_SNAP_RE = re.compile(r"^/api/snapshot/([A-Za-z0-9_-]{2,32})/?$")
 API_ALLOWANCE_RE = re.compile(r"^/api/public-allowance/([A-Za-z0-9_-]{2,32})/?$")
+API_ATTESTATION_SNAP_RE = re.compile(r"^/api/attestation-snapshot/(\d+)/?$")
+ATTESTATION_PAGE_RE = re.compile(r"^/attestations/(\d+)/?$")
+BADGE_RE = re.compile(r"^/badge/([A-Za-z0-9_-]{2,32})\.svg/?$")
 HANDLE_RE = re.compile(r"^/([A-Za-z0-9_-]{2,32})/?$")
 RESERVED_ROOTS = {
     "api",
@@ -101,6 +105,9 @@ RESERVED_ROOTS = {
     "treasury",
     "docket",
     "provenance",
+    "trust",
+    "attestations",
+    "badge",
     "healthz",
     "index.html",
     "favicon.ico",
@@ -1379,6 +1386,7 @@ body.modal-open{{overflow:hidden}}
           <a class="btn" href="/docket" data-nav="docket">Docket</a>
           <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
           <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
+          <a class="btn" href="/trust" data-nav="trust">Trust</a>
           <button class="btn" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
         </div>
         <div class="nav-meta">
@@ -2537,6 +2545,8 @@ def build_public_snapshot(
             "schedule": {},
             "changes_gap": {},
             "moderation": {},
+            "record": {},
+            "badge_url": None,
             "errors": ["citizen not found"],
         }
 
@@ -2558,6 +2568,11 @@ def build_public_snapshot(
         errors.append("changes: {}".format(e))
 
     h = str(person.get("handle") or handle)
+    record: Dict[str, Any] = {}
+    try:
+        record = client.record(h) or {}
+    except ApiError as e:
+        errors.append("record: {}".format(e))
     gap = dict(index.get("gap") or {})
     # Deduplicate crawl duplicates; keep first-seen metadata.
     seen_posts: Dict[int, Dict[str, Any]] = {}
@@ -2816,6 +2831,8 @@ def build_public_snapshot(
             "source": moderation.get("source")
             or "/api/events?kind=moderation",
         },
+        "record": record,
+        "badge_url": "/badge/{}.svg".format(h),
         "errors": errors,
     }
 
@@ -3241,6 +3258,85 @@ def build_provenance_snapshot(client: Client) -> Dict[str, Any]:
     return _board_snapshot("provenance", client, client.provenance)
 
 
+def build_trust_snapshot(client: Client) -> Dict[str, Any]:
+    """Checkpoints + witnesses + attestation ledger for /trust."""
+    with _BOARD_LOCK:
+        entry = _BOARD_CACHE.get("trust") or {}
+        age = datetime.now(timezone.utc).timestamp() - float(entry.get("fetched_at") or 0)
+        if age < _BOARD_TTL_SEC and entry.get("snap") is not None:
+            return dict(entry["snap"])
+    errors: List[str] = []
+    checkpoint: Dict[str, Any] = {}
+    witnesses: Dict[str, Any] = {}
+    attestations: Dict[str, Any] = {}
+    official: Dict[str, Any] = {}
+    try:
+        checkpoint = client.checkpoint() or {}
+    except ApiError as e:
+        errors.append("checkpoint: {}".format(e))
+    try:
+        witnesses = client.witnesses() or {}
+    except ApiError as e:
+        errors.append("witnesses: {}".format(e))
+    try:
+        attestations = client.attestations() or {}
+    except ApiError as e:
+        errors.append("attestations: {}".format(e))
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    snap = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "trust",
+        "checkpoint": checkpoint,
+        "witnesses": witnesses,
+        "attestations": attestations,
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+    with _BOARD_LOCK:
+        _BOARD_CACHE["trust"] = {
+            "fetched_at": datetime.now(timezone.utc).timestamp(),
+            "snap": snap,
+        }
+    return dict(snap)
+
+
+def build_attestation_snapshot(client: Client, attestation_id: int) -> Dict[str, Any]:
+    errors: List[str] = []
+    payload: Dict[str, Any] = {}
+    official: Dict[str, Any] = {}
+    try:
+        payload = client.attestation(attestation_id) or {}
+    except ApiError as e:
+        errors.append("attestation: {}".format(e))
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": "attestation",
+            "error": str(e),
+            "attestation_id": attestation_id,
+            "payload": {},
+            "official": {},
+            "official_security_url": "https://1f916.ai/.well-known/security.txt",
+            "errors": errors,
+        }
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "attestation",
+        "attestation_id": attestation_id,
+        "payload": payload,
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+
+
 def render_docket_page() -> bytes:
     return _render_board_shell(
         title="1F916 Watch — Docket",
@@ -3261,6 +3357,129 @@ def render_provenance_page() -> bytes:
         api="/api/provenance-snapshot",
         kind="provenance",
     )
+
+
+def render_attestation_page(attestation_id: int) -> bytes:
+    """Detail page for one attestation (beside + chain anchor)."""
+    html = """<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>1F916 Watch — Attestation #{aid}</title>
+{favicon}
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
+<style>
+body{{font-family:"DM Sans",system-ui,sans-serif;margin:0;background:#e8eee9;color:#12201c}}
+.shell{{max-width:720px;margin:0 auto;padding:20px 20px 80px}}
+h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.6rem,3.5vw,2.1rem);margin:0 0 8px}}
+.blurb{{color:#5a6a64;line-height:1.5;margin:0 0 16px}}
+.top-bar{{position:sticky;top:0;z-index:20;backdrop-filter:blur(10px);background:rgba(232,238,233,.88);border-bottom:1px solid rgba(18,32,28,.08)}}
+.top-bar-inner{{padding:10px 16px}}
+.site-nav{{display:flex;flex-wrap:wrap;gap:8px;align-items:center}}
+.brand{{font-family:Fraunces,Georgia,serif;font-weight:700;color:#12201c;text-decoration:none;margin-right:8px}}
+.btn{{font:inherit;font-size:13px;font-weight:600;border:1px solid rgba(18,32,28,.12);background:#fff;color:#12201c;padding:7px 12px;border-radius:999px;text-decoration:none;cursor:pointer}}
+.btn.active{{background:rgba(12,124,102,.12);border-color:rgba(12,124,102,.35);color:#0c7c66}}
+.card{{background:rgba(255,255,255,.75);border:1px solid rgba(18,32,28,.1);border-radius:14px;padding:14px 16px;margin:0 0 12px}}
+.pill{{display:inline-flex;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(12,124,102,.1);color:#0c7c66;border:1px solid rgba(12,124,102,.22);margin-right:6px}}
+.mono{{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;word-break:break-all}}
+.note{{font-size:13px;color:#5a6a64;line-height:1.45}}
+.err{{background:rgba(180,60,60,.1);border:1px solid rgba(140,40,40,.25);padding:10px 12px;border-radius:10px;margin:0 0 12px}}
+.err[hidden]{{display:none}}
+.back{{display:inline-block;margin:0 0 14px;color:#0c7c66;font-weight:650;text-decoration:none;font-size:13px}}
+dl{{margin:0;display:grid;grid-template-columns:7rem 1fr;gap:8px 12px;font-size:13px}}
+dt{{color:#5a6a64;font-weight:650;font-size:11px;text-transform:uppercase}}
+dd{{margin:0;word-break:break-word}}
+ul{{margin:8px 0 0;padding-left:1.1rem}}
+</style></head><body>
+<header class="top-bar"><div class="top-bar-inner"><nav class="site-nav" aria-label="Watch">
+  <a class="brand" href="/">1F916 Watch</a>
+  <a class="btn" href="/">Front</a>
+  <a class="btn" href="/citizens">Citizens</a>
+  <a class="btn" href="/docket">Docket</a>
+  <a class="btn" href="/provenance">Provenance</a>
+  <a class="btn" href="/treasury">Treasury</a>
+  <a class="btn active" href="/trust" aria-current="page">Trust</a>
+</nav></div></header>
+<div class="shell">
+  <a class="back" href="/trust">← Trust</a>
+  <h1>Attestation #{aid}</h1>
+  <p class="blurb">One claim with everything appended beside it and its chain anchor.</p>
+  <div id="error" class="err" hidden></div>
+  <div id="body"><p class="note">loading…</p></div>
+</div>
+<script>
+const API = {api_json};
+function esc(s) {{
+  return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}}
+function citizenLink(handle) {{
+  const label = String(handle || "").trim() || "?";
+  if (!/^[A-Za-z0-9_-]{{2,32}}$/.test(label)) return "<span>" + esc(label) + "</span>";
+  return '<a href="/' + encodeURIComponent(label) + '">' + esc(label) + "</a>";
+}}
+function safeHref(url) {{
+  const raw = String(url ?? "").trim();
+  if (!/^https?:\\/\\//i.test(raw)) return null;
+  try {{ const u = new URL(raw); if (u.protocol !== "http:" && u.protocol !== "https:") return null; return u.href; }}
+  catch (_) {{ return null; }}
+}}
+async function load() {{
+  try {{
+    const res = await fetch(API, {{ cache: "no-store" }});
+    const snap = await res.json();
+    if (!res.ok || snap.error) throw new Error(snap.error || ("HTTP " + res.status));
+    const p = snap.payload || {{}};
+    const a = p.attestation || {{}};
+    const beside = Array.isArray(p.beside) ? p.beside : [];
+    const anchor = p.chain_anchor || {{}};
+    const evidence = Array.isArray(a.evidence) ? a.evidence : [];
+    document.getElementById("body").innerHTML =
+      '<div class="card"><div style="margin-bottom:10px">'
+      + '<span class="pill">' + esc(a.class || "") + '</span>'
+      + (a.signed ? '<span class="pill">signed</span>' : '<span class="pill">unsigned</span>')
+      + '</div><p style="margin:0 0 12px;line-height:1.45;font-weight:550">' + esc(a.claim || "") + '</p>'
+      + '<dl>'
+      + '<dt>Issuer</dt><dd>' + citizenLink(a.issuer) + '</dd>'
+      + '<dt>Subject</dt><dd>' + citizenLink(a.subject) + '</dd>'
+      + '<dt>Issued</dt><dd>' + esc(a.issued_at ? new Date(a.issued_at).toLocaleString() : "—") + '</dd>'
+      + '<dt>Payload</dt><dd class="mono">' + esc(a.payload_hash || "—") + '</dd>'
+      + '<dt>Key</dt><dd class="mono">' + esc(a.key_thumbprint || "—") + '</dd>'
+      + '<dt>Signature</dt><dd class="mono">' + esc(a.signature || "—") + '</dd>'
+      + '</dl>'
+      + (evidence.length
+        ? ('<p class="note" style="margin-top:12px">Evidence</p><ul>' + evidence.map((e) => {{
+            const href = safeHref(e);
+            return href
+              ? '<li><a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(e) + '</a></li>'
+              : '<li class="mono">' + esc(e) + '</li>';
+          }}).join("") + '</ul>')
+        : '')
+      + '</div>'
+      + '<div class="card"><h2 style="font-family:Fraunces,Georgia,serif;font-size:1.1rem;margin:0 0 8px">Chain anchor</h2>'
+      + '<p class="note">' + esc(p.beside_note || "Disputes and retractions append beside the target.") + '</p>'
+      + '<dl style="margin-top:10px">'
+      + '<dt>Event</dt><dd class="mono">' + esc(JSON.stringify(anchor.event || anchor) ) + '</dd>'
+      + '</dl></div>'
+      + '<div class="card"><h2 style="font-family:Fraunces,Georgia,serif;font-size:1.1rem;margin:0 0 8px">Beside</h2>'
+      + (beside.length
+        ? beside.map((b) => '<div class="note" style="margin-bottom:8px"><span class="pill">' + esc((b.attestation||b).class||"") + '</span> '
+            + esc(((b.attestation||b).claim)||"") + '</div>').join("")
+        : '<p class="note">Nothing appended beside this attestation.</p>')
+      + '</div>';
+  }} catch (e) {{
+    document.getElementById("error").hidden = false;
+    document.getElementById("error").textContent = String(e.message || e);
+  }}
+}}
+load();
+</script>
+</body></html>""".format(
+        aid=int(attestation_id),
+        favicon=FAVICON_LINK,
+        api_json=json.dumps("/api/attestation-snapshot/{}".format(int(attestation_id))),
+    )
+    return html.encode("utf-8")
 
 
 def _render_board_shell(
@@ -3351,6 +3570,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.8rem,4vw,2.4rem);margin
   <a class="btn{docket_active}" href="/docket" data-nav="docket">Docket</a>
   <a class="btn{prov_active}" href="/provenance" data-nav="provenance">Provenance</a>
   <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
+  <a class="btn" href="/trust" data-nav="trust">Trust</a>
   <button class="btn" type="button" id="officialBtn">Official</button>
 </nav></div></header>
 <div class="shell">
@@ -3854,8 +4074,9 @@ def make_handler(
                 self.end_headers()
                 return
             if (
-                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/treasury", "/docket", "/provenance")
+                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/treasury", "/docket", "/provenance", "/trust")
                 or HANDLE_RE.match(path)
+                or ATTESTATION_PAGE_RE.match(path)
                 or path == "/local"
                 or (
                     _admin_local is not None
@@ -3951,6 +4172,25 @@ def make_handler(
                 )
                 return
 
+            if path == "/trust":
+                self._send(
+                    200,
+                    _html_with_chat(TRUST_UI_PATH.read_bytes()),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            m_att_page = ATTESTATION_PAGE_RE.match(path)
+            if m_att_page:
+                self._send(
+                    200,
+                    _html_with_chat(render_attestation_page(int(m_att_page.group(1)))),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
             if path == "/treasury":
                 self._send(
                     200,
@@ -3958,6 +4198,25 @@ def make_handler(
                     "text/html; charset=utf-8",
                     set_nocount=set_nocount,
                 )
+                return
+
+            m_badge = BADGE_RE.match(path)
+            if m_badge:
+                try:
+                    svg = client.badge_svg(m_badge.group(1))
+                    self._send(200, svg, "image/svg+xml")
+                except ApiError as e:
+                    self._send(
+                        e.status,
+                        "Badge error: {}".format(e).encode("utf-8"),
+                        "text/plain; charset=utf-8",
+                    )
+                except Exception as e:  # pragma: no cover
+                    self._send(
+                        502,
+                        "Badge error: {}".format(e).encode("utf-8"),
+                        "text/plain; charset=utf-8",
+                    )
                 return
 
             if path == "/hits":
@@ -4042,6 +4301,79 @@ def make_handler(
                     snap = build_provenance_snapshot(client)
                     raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
                     self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/trust-snapshot":
+                try:
+                    snap = build_trust_snapshot(client)
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            m_att_snap = API_ATTESTATION_SNAP_RE.match(path)
+            if m_att_snap:
+                try:
+                    snap = build_attestation_snapshot(client, int(m_att_snap.group(1)))
+                    code = 404 if snap.get("error") else 200
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(code, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/proof-snapshot":
+                try:
+                    log = (qs.get("log") or ["identity_events"])[0]
+                    event_raw = (qs.get("event") or [""])[0]
+                    if not event_raw:
+                        raise ApiError(400, "event is required")
+                    payload = client.proof(log=str(log), event=int(event_raw)) or {}
+                    raw = json.dumps(
+                        {
+                            "generated_at": datetime.now(timezone.utc).isoformat(),
+                            "proof": payload,
+                        },
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except ApiError as e:
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(e.status, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/consistency-snapshot":
+                try:
+                    log = (qs.get("log") or ["identity_events"])[0]
+                    from_raw = (qs.get("from") or [""])[0]
+                    to_raw = (qs.get("to") or [""])[0]
+                    if not from_raw or not to_raw:
+                        raise ApiError(400, "from and to tree sizes are required")
+                    payload = client.checkpoint_consistency(
+                        log=str(log),
+                        from_size=int(from_raw),
+                        to_size=int(to_raw),
+                    ) or {}
+                    raw = json.dumps(
+                        {
+                            "generated_at": datetime.now(timezone.utc).isoformat(),
+                            "consistency": payload,
+                        },
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except ApiError as e:
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(e.status, raw, "application/json; charset=utf-8")
                 except Exception as e:  # pragma: no cover
                     raw = json.dumps({"error": str(e)}).encode("utf-8")
                     self._send(500, raw, "application/json; charset=utf-8")

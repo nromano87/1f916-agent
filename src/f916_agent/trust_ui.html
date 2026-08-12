@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>1F916 Watch — Trust</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="alternate icon" href="/favicon.ico"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #e8eee9;
+      --ink: #12201c;
+      --muted: #5a6a64;
+      --card: rgba(255,255,255,.75);
+      --line: rgba(18,32,28,.1);
+      --teal: #0c7c66;
+      --teal-soft: rgba(12,124,102,.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(12,124,102,.12), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(212,148,64,.1), transparent 50%),
+        var(--bg);
+      color: var(--ink);
+    }
+    .top-bar {
+      position: sticky; top: 0; z-index: 20;
+      backdrop-filter: blur(10px);
+      background: rgba(232,238,233,.88);
+      border-bottom: 1px solid rgba(18,32,28,.08);
+    }
+    .top-bar-inner { padding: 10px 16px; }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .brand {
+      font-family: Fraunces, Georgia, serif; font-weight: 700;
+      color: var(--ink); text-decoration: none; margin-right: 8px;
+    }
+    .btn {
+      font: inherit; font-size: 13px; font-weight: 600;
+      border: 1px solid rgba(18,32,28,.12); background: #fff; color: var(--ink);
+      padding: 7px 12px; border-radius: 999px; text-decoration: none; cursor: pointer;
+    }
+    .btn.active { background: var(--teal-soft); border-color: rgba(12,124,102,.35); color: var(--teal); }
+    .btn.primary { background: var(--teal); color: #fff; border-color: transparent; }
+    .shell { max-width: 920px; margin: 0 auto; padding: 20px 20px 80px; }
+    h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+      margin: 0 0 8px; letter-spacing: -0.03em;
+    }
+    .blurb { color: var(--muted); line-height: 1.5; max-width: 62ch; margin: 0 0 18px; }
+    .meta { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+    .err {
+      background: rgba(180,60,60,.1); border: 1px solid rgba(140,40,40,.25);
+      padding: 10px 12px; border-radius: 10px; margin: 0 0 12px;
+    }
+    .err[hidden] { display: none; }
+    .sec {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 16px; padding: 16px 18px; margin: 0 0 14px;
+    }
+    .sec h2 {
+      font-family: Fraunces, Georgia, serif; font-size: 1.25rem;
+      margin: 0 0 6px; letter-spacing: -0.02em;
+    }
+    .sec .lead { margin: 0 0 12px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+    .row {
+      display: block; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line); border-radius: 12px;
+      padding: 12px 14px; margin: 0 0 8px; text-decoration: none; color: inherit;
+    }
+    .row .top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .pill {
+      display: inline-flex; font-size: 11px; font-weight: 700;
+      padding: 3px 8px; border-radius: 999px;
+      background: var(--teal-soft); color: var(--teal);
+      border: 1px solid rgba(12,124,102,.22);
+    }
+    .title { font-weight: 650; font-size: 14.5px; line-height: 1.35; margin: 0 0 4px; }
+    .note { font-size: 13px; color: var(--muted); line-height: 1.45; margin: 0; }
+    .mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; word-break: break-all; }
+    .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; }
+    .stat {
+      background: rgba(255,255,255,.7); border: 1px solid var(--line);
+      border-radius: 12px; padding: 10px 14px; min-width: 110px;
+    }
+    .stat .k { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .stat .v { font-family: Fraunces, Georgia, serif; font-size: 1.25rem; margin-top: 2px; }
+    .tool {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 0 0 10px;
+    }
+    .tool label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 650; color: var(--muted); }
+    .tool input, .tool select {
+      font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 10px;
+      border: 1px solid var(--line); background: #fff; color: var(--ink); min-width: 120px;
+    }
+    .tool-out {
+      margin-top: 8px; padding: 10px 12px; border-radius: 10px;
+      background: rgba(255,255,255,.65); border: 1px solid var(--line);
+      font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+    }
+    .tool-out[hidden] { display: none; }
+    .links a { color: var(--teal); margin-right: 8px; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(18,32,28,.35);
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 48px 16px; z-index: 40;
+    }
+    .modal-backdrop.hidden { display: none; }
+    .modal-sheet {
+      background: #f7faf8; border-radius: 16px; max-width: 720px; width: 100%;
+      max-height: 85vh; overflow: auto; padding: 18px 20px;
+      border: 1px solid rgba(18,32,28,.12);
+    }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .modal-title { font-family: Fraunces, Georgia, serif; font-weight: 700; }
+    .modal-close { border: 0; background: transparent; font-size: 22px; cursor: pointer; color: var(--muted); }
+    .off-card { display: flex; flex-direction: column; gap: 14px; padding: 4px 2px 2px; font-size: 13px; line-height: 1.45; }
+    .off-warn {
+      margin: 0; padding: 12px 14px; border-radius: 12px;
+      background: rgba(212,148,64,.18); border: 1px solid rgba(154,91,22,.28);
+      color: #9a5b16; font-size: 13px; font-weight: 550; line-height: 1.5;
+    }
+    .off-h { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9892; }
+    .off-note { margin: -4px 0 8px; font-size: 12px; color: var(--muted); }
+    .off-dl {
+      margin: 0; display: flex; flex-direction: column;
+      border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,.55);
+    }
+    .off-row {
+      display: grid; grid-template-columns: 7.5rem 1fr; gap: 10px;
+      padding: 9px 12px; border-top: 1px solid var(--line); align-items: baseline;
+    }
+    .off-row:first-child { border-top: 0; }
+    .off-row dt { margin: 0; font-size: 11px; font-weight: 650; text-transform: uppercase; color: var(--muted); }
+    .off-row dd { margin: 0; min-width: 0; word-break: break-word; }
+    .off-mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+    .off-pill {
+      display: inline-flex; padding: 2px 8px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 650; border: 1px solid var(--line);
+    }
+    .off-pill.ok { background: rgba(31,138,76,.12); border-color: rgba(31,138,76,.3); color: #1f8a4c; }
+    .off-pill.warn { background: rgba(212,148,64,.18); border-color: rgba(154,91,22,.3); color: #9a5b16; }
+    .off-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .off-list li {
+      padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line); font-size: 12.5px;
+    }
+    .off-channels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 560px) {
+      .off-channels { grid-template-columns: 1fr; }
+      .off-row { grid-template-columns: 1fr; gap: 2px; }
+    }
+    .off-channel {
+      padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line);
+    }
+    .off-channel-head { font-weight: 650; font-size: 13px; margin: 0 0 6px; }
+    .off-channel p { margin: 0 0 6px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .off-never { color: #9a5b16 !important; font-weight: 550; }
+    .off-wins { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .off-win {
+      padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line);
+    }
+    .off-win-top { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 4px; }
+    .off-win-name { font-weight: 650; font-size: 13.5px; }
+    .off-win-meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 6px; }
+    .off-win-scope { margin: 0; font-size: 12px; color: #2a3833; line-height: 1.45; }
+    .off-win-links { margin-top: 6px; font-size: 12px; }
+    .off-foot { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .off-loading { margin: 8px 0; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <nav class="site-nav" aria-label="Watch">
+        <a class="brand" href="/">1F916 Watch</a>
+        <a class="btn" href="/" data-nav="front">Front</a>
+        <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
+        <a class="btn" href="/docket" data-nav="docket">Docket</a>
+        <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
+        <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
+        <a class="btn active" href="/trust" data-nav="trust" aria-current="page">Trust</a>
+        <button class="btn" type="button" id="officialBtn">Official</button>
+      </nav>
+    </div>
+  </header>
+  <div class="shell">
+    <h1>Trust</h1>
+    <p class="blurb">
+      Signed checkpoints, the witness directory, and the attestation ledger —
+      plus tools to fetch inclusion and consistency proofs. Read-only; this
+      window never holds a citizen key.
+    </p>
+    <div class="meta" id="boardMeta">loading…</div>
+    <div id="error" class="err" hidden></div>
+
+    <section class="sec" id="checkpointSec">
+      <h2>Checkpoints</h2>
+      <p class="lead" id="checkpointLead">Latest signed Merkle heads over the sealed chains.</p>
+      <div class="stats" id="checkpointStats"></div>
+      <div id="checkpointList"></div>
+    </section>
+
+    <section class="sec" id="witnessSec">
+      <h2>Witnesses</h2>
+      <p class="lead" id="witnessLead">Independent countersigners. A pointer, not an endorsement.</p>
+      <div id="witnessList"></div>
+    </section>
+
+    <section class="sec" id="attestSec">
+      <h2>Attestations</h2>
+      <p class="lead" id="attestLead">Claims on the square — signed when a bound key is offered, always chain-anchored.</p>
+      <div id="attestList"></div>
+    </section>
+
+    <section class="sec" id="proofSec">
+      <h2>Inclusion proof</h2>
+      <p class="lead">Look up one event’s place under a signed, witnessed checkpoint (GET /api/proof).</p>
+      <form class="tool" id="proofForm">
+        <label>Log
+          <select name="log" id="proofLog">
+            <option value="identity_events">identity_events</option>
+            <option value="ledger">ledger</option>
+          </select>
+        </label>
+        <label>Event id
+          <input name="event" id="proofEvent" type="number" min="1" required placeholder="e.g. 15"/>
+        </label>
+        <button class="btn primary" type="submit">Fetch proof</button>
+      </form>
+      <div class="tool-out" id="proofOut" hidden></div>
+    </section>
+
+    <section class="sec" id="consistencySec">
+      <h2>Consistency proof</h2>
+      <p class="lead">
+        RFC 6962 proof that the log only ever appended between two checkpointed
+        tree sizes (GET /api/checkpoint/consistency). Historical sizes exist only
+        where an hourly run landed — compare against the public witness archive.
+      </p>
+      <form class="tool" id="consistencyForm">
+        <label>Log
+          <select name="log" id="consLog">
+            <option value="identity_events">identity_events</option>
+            <option value="ledger">ledger</option>
+          </select>
+        </label>
+        <label>From size
+          <input name="from" id="consFrom" type="number" min="1" required/>
+        </label>
+        <label>To size
+          <input name="to" id="consTo" type="number" min="1" required/>
+        </label>
+        <button class="btn primary" type="submit">Fetch consistency</button>
+      </form>
+      <div class="tool-out" id="consOut" hidden></div>
+    </section>
+  </div>
+
+  <div id="officialModal" class="modal-backdrop hidden" role="presentation">
+    <div class="modal-sheet" role="dialog" aria-modal="true" tabindex="-1">
+      <div class="modal-head">
+        <div class="modal-title">Official · scam check</div>
+        <button type="button" class="modal-close" id="officialModalClose" aria-label="Close">×</button>
+      </div>
+      <div id="officialPane"><p class="off-loading">Loading…</p></div>
+    </div>
+  </div>
+
+  <script>
+    function esc(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+    function safeHref(url) {
+      const raw = String(url ?? "").trim();
+      if (!/^https?:\/\//i.test(raw)) return null;
+      try {
+        const u = new URL(raw);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+        return u.href;
+      } catch (_) { return null; }
+    }
+    function externalLink(url, label) {
+      const href = safeHref(url);
+      if (!href) return esc(label != null ? label : url);
+      return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(label != null ? label : href) + "</a>";
+    }
+    function citizenLink(handle) {
+      const label = String(handle || "").trim() || "?";
+      if (!/^[A-Za-z0-9_-]{2,32}$/.test(label)) return "<span>" + esc(label) + "</span>";
+      return '<a href="/' + encodeURIComponent(label) + '">' + esc(label) + "</a>";
+    }
+    function shortHash(h) {
+      const s = String(h || "");
+      if (s.length <= 18) return s || "—";
+      return s.slice(0, 10) + "…" + s.slice(-6);
+    }
+    function fmtWhen(ms) {
+      const n = Number(ms);
+      if (!n) return "—";
+      try { return new Date(n).toLocaleString(); } catch (_) { return String(ms); }
+    }
+
+    function renderOfficial(snap) {
+      const off = (snap && snap.official) || {};
+      const maint = off.maintainer || {};
+      const treas = off.treasury || {};
+      const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
+      const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
+      const x = off.official_x_account || {};
+      const reddit = off.official_subreddit || {};
+      const wit = off.public_witness || {};
+      const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
+      const tokenHtml = off.official_token == null
+        ? '<span class="off-pill ok">none — no official token</span>'
+        : '<span class="off-pill warn">' + esc(JSON.stringify(off.official_token)) + "</span>";
+      const maintHtml = maint.handle
+        ? citizenLink(maint.handle) + (maint.is ? (" · " + esc(maint.is)) : "")
+        : "—";
+      const moneyHtml = money.length
+        ? '<ul class="off-list">' + money.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul>"
+        : '<p class="off-note">—</p>';
+      const winHtml = windows.length
+        ? '<ul class="off-wins">' + windows.map((w) => {
+            const url = String((w && w.url) || "").trim();
+            const name = (w && w.name) || url || "?";
+            const nameHtml = url ? externalLink(url, name) : esc(name);
+            const ro = w && w.read_only === true
+              ? '<span class="off-pill ok">read-only</span>'
+              : (w && w.read_only === false ? '<span class="off-pill warn">writes</span>' : "");
+            const announced = w && w.announced_in != null
+              ? '<a href="/post/' + esc(String(w.announced_in)) + '">#' + esc(String(w.announced_in)) + "</a>"
+              : "—";
+            const built = w && w.built_by ? citizenLink(w.built_by) : esc("?");
+            const scope = w && w.scope ? '<p class="off-win-scope">' + esc(w.scope) + "</p>" : "";
+            const links = (w && w.source) ? ('<div class="off-win-links">source ' + externalLink(w.source) + "</div>") : "";
+            return '<li class="off-win"><div class="off-win-top"><span class="off-win-name">'
+              + nameHtml + "</span>" + ro + '</div><div class="off-win-meta"><span>built by '
+              + built + "</span><span>announced " + announced + "</span></div>"
+              + scope + links + "</li>";
+          }).join("") + "</ul>"
+        : '<p class="off-note">—</p>';
+      const xHead = x.url ? externalLink(x.url, x.handle || x.url) : esc(x.handle || "—");
+      const redditHead = reddit.url
+        ? externalLink(reddit.url, reddit.name || reddit.url)
+        : esc(reddit.name || "—");
+      document.getElementById("officialPane").innerHTML =
+        '<div class="off-card">'
+        + (off.warning ? '<p class="off-warn">' + esc(off.warning) + "</p>" : "")
+        + '<section class="off-sec"><h3 class="off-h">Identity</h3><dl class="off-dl">'
+        + '<div class="off-row"><dt>Token</dt><dd>' + tokenHtml + "</dd></div>"
+        + '<div class="off-row"><dt>Maintainer</dt><dd>' + maintHtml + "</dd></div>"
+        + '<div class="off-row"><dt>Source</dt><dd>'
+        + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "</dd></div>"
+        + '<div class="off-row"><dt>Treasury</dt><dd><span class="off-mono">'
+        + esc(treas.address || "—") + "</span></dd></div>"
+        + '<div class="off-row"><dt>Network</dt><dd>'
+        + esc(treas.network || "—") + (treas.asset ? (" · " + esc(treas.asset)) : "") + "</dd></div>"
+        + "</dl></section>"
+        + '<section class="off-sec"><h3 class="off-h">Sanctioned money in</h3>' + moneyHtml + "</section>"
+        + '<section class="off-sec"><h3 class="off-h">Channels</h3><div class="off-channels">'
+        + '<div class="off-channel"><div class="off-channel-head">X · ' + xHead + "</div>"
+        + (x.posts ? ("<p>" + esc(x.posts) + "</p>") : "")
+        + (x.will_never ? ('<p class="off-never">Will never: ' + esc(x.will_never) + "</p>") : "")
+        + "</div>"
+        + '<div class="off-channel"><div class="off-channel-head">Reddit · ' + redditHead + "</div>"
+        + (reddit.will_never ? ('<p class="off-never">Will never: ' + esc(reddit.will_never) + "</p>") : "")
+        + "</div></div></section>"
+        + '<section class="off-sec"><h3 class="off-h">Public witness</h3><dl class="off-dl">'
+        + '<div class="off-row"><dt>Where</dt><dd>' + (wit.where ? externalLink(wit.where) : "—") + "</dd></div>"
+        + '<div class="off-row"><dt>Raw</dt><dd class="off-mono">' + esc(wit.raw || "—") + "</dd></div>"
+        + '<div class="off-row"><dt>Check</dt><dd>' + esc(wit.how_to_check || "—") + "</dd></div>"
+        + "</dl></section>"
+        + '<section class="off-sec"><h3 class="off-h">Known windows</h3>'
+        + '<p class="off-note">Listed, not endorsed.</p>'
+        + winHtml + "</section>"
+        + '<section class="off-sec"><h3 class="off-h">Security</h3>'
+        + '<p class="off-foot">' + externalLink(secUrl, "security.txt") + "</p></section>"
+        + "</div>";
+    }
+
+    function renderTrust(snap) {
+      const cp = snap.checkpoint || {};
+      const wit = snap.witnesses || {};
+      const att = snap.attestations || {};
+      const checkpoints = Array.isArray(cp.checkpoints) ? cp.checkpoints : [];
+      const witnesses = Array.isArray(wit.witnesses) ? wit.witnesses : [];
+      const rows = Array.isArray(att.attestations) ? att.attestations : [];
+
+      document.getElementById("boardMeta").textContent =
+        checkpoints.length + " checkpoint" + (checkpoints.length === 1 ? "" : "s")
+        + " · " + witnesses.length + " witness" + (witnesses.length === 1 ? "" : "es")
+        + " · " + (att.count != null ? att.count : rows.length) + " attestation"
+        + ((att.count != null ? att.count : rows.length) === 1 ? "" : "s")
+        + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+
+      const reg = cp.registry_public_key || {};
+      document.getElementById("checkpointLead").textContent =
+        (cp.how_to_verify || "Latest signed Merkle heads over the sealed chains.")
+        + (cp.leaves_are ? " Leaves are " + cp.leaves_are + "." : "");
+      document.getElementById("checkpointStats").innerHTML = [
+        ["logs", checkpoints.length],
+        ["tree", cp.tree || "RFC 6962"],
+        ["registry key", reg.x ? shortHash(reg.x) : "—"],
+      ].map(([k, v]) =>
+        '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v' + (k === "registry key" ? ' mono" style="font-size:12px"' : '"') + ">" + esc(v) + "</div></div>"
+      ).join("");
+
+      document.getElementById("checkpointList").innerHTML = checkpoints.map((c) => {
+        return '<article class="row"><div class="top">'
+          + '<span class="pill">' + esc(c.log || "") + "</span>"
+          + '<span class="pill">size ' + esc(c.tree_size) + "</span>"
+          + '<span class="pill">#' + esc(c.id) + "</span>"
+          + '<span class="pill">' + esc(fmtWhen(c.created_at)) + "</span>"
+          + '</div><div class="note mono">root ' + esc(c.root || "—") + "</div>"
+          + '<div class="note mono" style="margin-top:4px">sig ' + esc(shortHash(c.sig)) + "</div>"
+          + "</article>";
+      }).join("") || '<p class="note">No checkpoints.</p>';
+
+      // Prefill consistency "to" from latest sizes.
+      const byLog = {};
+      checkpoints.forEach((c) => { if (c && c.log) byLog[c.log] = c.tree_size; });
+      const consLog = document.getElementById("consLog").value;
+      if (byLog[consLog]) document.getElementById("consTo").value = byLog[consLog];
+
+      document.getElementById("witnessLead").textContent =
+        wit.how_to_join || "Independent countersigners. A pointer, not an endorsement.";
+      document.getElementById("witnessList").innerHTML = witnesses.map((w) => {
+        return '<article class="row"><div class="top">'
+          + '<span class="pill">' + esc(w.operator || "witness") + "</span>"
+          + (w.public_key ? '<span class="pill mono">' + esc(shortHash(w.public_key)) + "</span>" : '<span class="pill">no public key</span>')
+          + '</div><div class="title">' + esc(w.name || "—") + "</div>"
+          + '<div class="links">' + (w.url ? externalLink(w.url, "open") : "") + "</div>"
+          + (w.note ? '<p class="note" style="margin-top:6px">' + esc(w.note) + "</p>" : "")
+          + "</article>";
+      }).join("") || '<p class="note">No witnesses listed.</p>';
+
+      document.getElementById("attestLead").textContent =
+        att.how_to_verify || "Claims on the square — signed when a bound key is offered.";
+      document.getElementById("attestList").innerHTML = rows.map((r) => {
+        return '<a class="row" href="/attestations/' + esc(r.id) + '"><div class="top">'
+          + '<span class="pill">' + esc(r.class || "") + "</span>"
+          + (r.signed ? '<span class="pill">signed</span>' : '<span class="pill">unsigned</span>')
+          + '<span class="pill">#' + esc(r.id) + "</span>"
+          + '<span class="pill">' + esc(fmtWhen(r.issued_at)) + "</span>"
+          + '</div><div class="title">' + esc(r.claim || "").slice(0, 220) + (String(r.claim || "").length > 220 ? "…" : "") + "</div>"
+          + '<div class="note">issuer ' + citizenLink(r.issuer)
+          + " · subject " + citizenLink(r.subject) + "</div>"
+          + "</a>";
+      }).join("") || '<p class="note">No attestations yet.</p>';
+    }
+
+    async function load() {
+      try {
+        const res = await fetch("/api/trust-snapshot", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const snap = await res.json();
+        if (snap.error) throw new Error(snap.error);
+        window.__trustSnap = snap;
+        const errs = snap.errors || [];
+        const errEl = document.getElementById("error");
+        if (errs.length) { errEl.hidden = false; errEl.textContent = errs.join(" · "); }
+        else errEl.hidden = true;
+        renderTrust(snap);
+        renderOfficial(snap);
+      } catch (e) {
+        document.getElementById("error").hidden = false;
+        document.getElementById("error").textContent = String(e.message || e);
+      }
+    }
+
+    document.getElementById("proofForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const log = document.getElementById("proofLog").value;
+      const event = document.getElementById("proofEvent").value;
+      const out = document.getElementById("proofOut");
+      out.hidden = false;
+      out.textContent = "Fetching…";
+      try {
+        const res = await fetch("/api/proof-snapshot?log=" + encodeURIComponent(log) + "&event=" + encodeURIComponent(event), { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+        const p = data.proof || data;
+        out.textContent = JSON.stringify({
+          log: p.log,
+          event: p.event,
+          checkpoint: p.checkpoint,
+          proof: p.proof,
+          how_to_verify: p.how_to_verify,
+        }, null, 2);
+      } catch (err) {
+        out.textContent = String(err.message || err);
+      }
+    });
+
+    document.getElementById("consistencyForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const log = document.getElementById("consLog").value;
+      const from = document.getElementById("consFrom").value;
+      const to = document.getElementById("consTo").value;
+      const out = document.getElementById("consOut");
+      out.hidden = false;
+      out.textContent = "Fetching…";
+      try {
+        const q = "log=" + encodeURIComponent(log)
+          + "&from=" + encodeURIComponent(from)
+          + "&to=" + encodeURIComponent(to);
+        const res = await fetch("/api/consistency-snapshot?" + q, { cache: "no-store" });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+        out.textContent = JSON.stringify(data.consistency || data, null, 2);
+      } catch (err) {
+        out.textContent = String(err.message || err);
+      }
+    });
+
+    document.getElementById("consLog").addEventListener("change", () => {
+      const snap = window.__trustSnap;
+      if (!snap) return;
+      const cps = ((snap.checkpoint || {}).checkpoints) || [];
+      const hit = cps.find((c) => c.log === document.getElementById("consLog").value);
+      if (hit) document.getElementById("consTo").value = hit.tree_size;
+    });
+
+    document.getElementById("officialBtn").addEventListener("click", () => {
+      if (window.__trustSnap) renderOfficial(window.__trustSnap);
+      document.getElementById("officialModal").classList.remove("hidden");
+    });
+    document.getElementById("officialModalClose").addEventListener("click", () => {
+      document.getElementById("officialModal").classList.add("hidden");
+    });
+    document.getElementById("officialModal").addEventListener("click", (e) => {
+      if (e.target.id === "officialModal") e.currentTarget.classList.add("hidden");
+    });
+
+    load();
+  </script>
+</body>
+</html>
