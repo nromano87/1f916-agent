@@ -1681,13 +1681,13 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
       const remainRows = handles.map((h) => {{
         const c = byKey[h.toLowerCase()] || {{ handle: h }};
         const name = c.handle || h;
-        return "<tr><td><a href=\"/" + encodeURIComponent(name) + "\">" + esc(name) + "</a></td>" +
+        return '<tr><td><a href="/' + encodeURIComponent(name) + '">' + esc(name) + "</a></td>" +
           remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + "</tr>";
       }});
       if (remainEl) {{
         remainEl.innerHTML =
           '<article class="card remain-card"><table><thead><tr>' +
-          "<th>Citizen</th><th class=\"num\">Posts remaining</th><th class=\"num\">Comments remaining</th>" +
+          '<th>Citizen</th><th class="num">Posts remaining</th><th class="num">Comments remaining</th>' +
           "</tr></thead><tbody>" + remainRows.join("") + "</tbody></table></article>";
       }}
       listEl.innerHTML = cards.join("");
