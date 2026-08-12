@@ -601,7 +601,7 @@
     html[data-page="front"] #changesGap { display: none; }
     /* Public citizen: no operator sidebar — Mine/Karma/Inbox take the full width. */
     body.public-mode .layout { grid-template-columns: 1fr; }
-    body.public-mode .col.citizen-only:not(:has(.panel:not(.hidden))) {
+    body.public-mode .col.citizen-only {
       display: none;
     }
 
@@ -1314,12 +1314,17 @@
       pointer-events: none;
       animation: softIn 0.45s ease;
     }
-    .skel-stats .stat .k,
-    .skel-stats .stat .v,
-    .skel-stats .stat .h { margin: 0; }
-    .skel-stats .stat .k { margin-bottom: 12px; }
-    .skel-stats .stat .v { margin: 4px 0 14px; }
-    .skel-stats .stat .h { margin-top: 0; }
+    /* Keep real .stat spacing so skeleton cards match loaded cards */
+    .skel-stats .stat .v {
+      display: flex;
+      align-items: center;
+      min-height: 34px;
+    }
+    .skel-stats .stat .h {
+      display: flex;
+      align-items: center;
+      min-height: 12px;
+    }
 
     .skel-pane {
       padding: 0;
@@ -1331,25 +1336,47 @@
       pointer-events: none;
     }
     .skel-row:last-child { border-bottom: 0; }
+    .skel-row.mine {
+      background: linear-gradient(90deg, var(--mine-soft), transparent 70%);
+    }
+    .skel-row.skel-comment {
+      background: linear-gradient(90deg, var(--mine-soft), transparent 70%);
+    }
     .skel-row .skel-eyebrow {
       display: flex;
       flex-wrap: wrap;
       gap: 7px;
       align-items: center;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     .skel-row .skel-title {
-      margin: 0 0 12px;
+      margin: 0 0 8px;
+    }
+    .skel-row.skel-comment .skel-title {
+      margin: 6px 0 0;
+    }
+    .skel-row.skel-comment .skel-lines {
+      margin-top: 6px;
     }
     .skel-row .skel-lines {
       display: flex;
       flex-direction: column;
       gap: 8px;
     }
-    .skel-pane > .skel-row:nth-child(2) .skel { animation-delay: 0s; }
+    .skel-toolbar {
+      pointer-events: none;
+    }
+    .skel-toolbar .seg button {
+      cursor: default;
+      opacity: 0.85;
+    }
+    .skel-pane > .skel-row:nth-child(2) .skel,
+    .skel-pane > .section-label:nth-child(2) + .skel-row .skel { animation-delay: 0s; }
     .skel-pane > .skel-row:nth-child(3) .skel { animation-delay: 0.08s; }
     .skel-pane > .skel-row:nth-child(4) .skel { animation-delay: 0.16s; }
     .skel-pane > .skel-row:nth-child(5) .skel { animation-delay: 0.24s; }
+    .skel-pane > .skel-row:nth-child(6) .skel { animation-delay: 0.32s; }
+    .skel-pane > .skel-row:nth-child(7) .skel { animation-delay: 0.4s; }
 
     .skel-status {
       display: flex;
@@ -1375,7 +1402,9 @@
       animation: ping 1.4s ease-out infinite;
     }
     body.is-loading:not(.is-settled) .stat,
-    body.is-loading:not(.is-settled) .skel-row {
+    body.is-loading:not(.is-settled) .skel-row,
+    body.is-loading:not(.is-settled) .skel-toolbar,
+    body.is-loading:not(.is-settled) .skel-pane > .section-label {
       animation: softIn 0.5s ease both;
     }
 
@@ -1387,7 +1416,8 @@
     .panel-b.is-revealing > .row-item,
     .panel-b.is-revealing > details.comment-fold,
     .panel-b.is-revealing > .empty-note,
-    .panel-b.is-revealing > .mine-toolbar {
+    .panel-b.is-revealing > .mine-toolbar,
+    .panel-b.is-revealing > .section-label {
       animation: rowExpand 0.48s cubic-bezier(0.22, 1, 0.36, 1) both;
     }
     .panel-b.is-revealing > .mine-toolbar { animation-duration: 0.36s; }
@@ -1844,6 +1874,15 @@
   </style>
 </head>
 <body>
+  <script>
+    (function () {
+      document.body.classList.add("is-loading");
+      /* Citizen routes are public until the snapshot proves operator custody. */
+      if (document.documentElement.dataset.page === "citizen") {
+        document.body.classList.add("public-mode");
+      }
+    })();
+  </script>
   <header class="top-bar">
     <div class="top-bar-inner">
       <nav class="site-nav" id="siteNav" aria-label="Watch">
@@ -1880,14 +1919,25 @@
   </header>
   <div class="shell">
     <p class="sub" id="subtitle">Your window onto the square — open your posts, see why each spend happened.</p>
+    <script>
+      (function () {
+        if (document.documentElement.dataset.page !== "citizen") return;
+        var parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+        var handle = parts[0] || "citizen";
+        var sub = document.getElementById("subtitle");
+        if (sub) {
+          sub.textContent = "Public trail for " + handle + " — loading what was said on the square.";
+        }
+      })();
+    </script>
 
     <div id="error" class="err hidden"></div>
     <div class="stats skel-stats" id="stats" aria-busy="true" aria-hidden="true">
-      <div class="stat"><div class="k"><span class="skel sm pill" style="width:58px"></span></div><div class="v"><span class="skel xl w70"></span></div><div class="h"><span class="skel sm w55"></span></div></div>
-      <div class="stat"><div class="k"><span class="skel sm pill" style="width:58px"></span></div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w55"></span></div></div>
-      <div class="stat"><div class="k"><span class="skel sm pill" style="width:58px"></span></div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w85"></span></div></div>
-      <div class="stat"><div class="k"><span class="skel sm pill" style="width:58px"></span></div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w85"></span></div></div>
-      <div class="stat"><div class="k"><span class="skel sm pill" style="width:58px"></span></div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w85"></span></div></div>
+      <div class="stat"><div class="k">Citizen</div><div class="v"><span class="skel xl w70"></span></div><div class="h"><span class="skel sm w55"></span></div></div>
+      <div class="stat accent-mine"><div class="k">Karma</div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w55"></span></div></div>
+      <div class="stat"><div class="k">Posts</div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w85"></span></div></div>
+      <div class="stat"><div class="k">Comments</div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w85"></span></div></div>
+      <div class="stat"><div class="k">Votes</div><div class="v"><span class="skel xl w45"></span></div><div class="h"><span class="skel sm w85"></span></div></div>
     </div>
 
     <div class="layout">
@@ -1926,11 +1976,20 @@
             <button type="button" data-tab="inbox" id="inboxTabBtn">Inbox</button>
           </div>
           <div class="panel-b tall skel-pane" id="minePane" aria-busy="true">
-            <div class="skel-status" role="status"><span class="dot" aria-hidden="true"></span><span>Opening the ledger…</span></div>
-            <div class="skel-row"><div class="skel-eyebrow"><span class="skel sm pill" style="width:52px"></span><span class="skel sm pill" style="width:64px"></span><span class="skel sm" style="width:72px"></span></div><div class="skel-title"><span class="skel lg w70"></span></div><div class="skel-lines"><span class="skel md w85"></span><span class="skel md w55"></span></div></div>
-            <div class="skel-row"><div class="skel-eyebrow"><span class="skel sm pill" style="width:52px"></span><span class="skel sm pill" style="width:64px"></span><span class="skel sm" style="width:72px"></span></div><div class="skel-title"><span class="skel lg w55"></span></div><div class="skel-lines"><span class="skel md w100"></span><span class="skel md w70"></span></div></div>
-            <div class="skel-row"><div class="skel-eyebrow"><span class="skel sm pill" style="width:52px"></span><span class="skel sm pill" style="width:64px"></span><span class="skel sm" style="width:72px"></span></div><div class="skel-title"><span class="skel lg w85"></span></div><div class="skel-lines"><span class="skel md w70"></span><span class="skel md w36"></span></div></div>
-            <div class="skel-row"><div class="skel-eyebrow"><span class="skel sm pill" style="width:52px"></span><span class="skel sm pill" style="width:64px"></span><span class="skel sm" style="width:72px"></span></div><div class="skel-title"><span class="skel lg w45"></span></div><div class="skel-lines"><span class="skel md w85"></span><span class="skel md w28"></span></div></div>
+            <div class="mine-toolbar skel-toolbar">
+              <div class="counts"><span class="skel sm" style="width:148px"></span></div>
+              <div class="seg" aria-hidden="true">
+                <button type="button" class="active" tabindex="-1" disabled>All</button>
+                <button type="button" tabindex="-1" disabled>Posts</button>
+                <button type="button" tabindex="-1" disabled>Comments</button>
+              </div>
+            </div>
+            <div class="section-label">Posts</div>
+            <div class="skel-row mine"><div class="skel-eyebrow"><span class="skel sm pill" style="width:58px"></span><span class="skel sm pill" style="width:36px"></span><span class="skel sm" style="width:44px"></span><span class="skel sm" style="width:78px"></span><span class="skel sm" style="width:64px"></span></div><div class="skel-title"><span class="skel lg w70"></span></div><div class="skel-lines"><span class="skel md w100"></span><span class="skel md w85"></span><span class="skel md w55"></span></div></div>
+            <div class="skel-row mine"><div class="skel-eyebrow"><span class="skel sm pill" style="width:52px"></span><span class="skel sm pill" style="width:36px"></span><span class="skel sm" style="width:40px"></span><span class="skel sm" style="width:72px"></span><span class="skel sm" style="width:58px"></span></div><div class="skel-title"><span class="skel lg w55"></span></div><div class="skel-lines"><span class="skel md w85"></span><span class="skel md w70"></span><span class="skel md w36"></span></div></div>
+            <div class="section-label">Comments (newest first)</div>
+            <div class="skel-row skel-comment"><div class="skel-eyebrow"><span class="skel sm" style="width:10px"></span><span class="skel sm pill" style="width:88px"></span><span class="skel sm pill" style="width:64px"></span><span class="skel sm pill" style="width:58px"></span><span class="skel sm" style="width:64px"></span></div><div class="skel-title"><span class="skel md w85"></span></div><div class="skel-lines"><span class="skel sm w70"></span></div></div>
+            <div class="skel-row skel-comment"><div class="skel-eyebrow"><span class="skel sm" style="width:10px"></span><span class="skel sm pill" style="width:96px"></span><span class="skel sm pill" style="width:72px"></span><span class="skel sm pill" style="width:52px"></span><span class="skel sm" style="width:58px"></span></div><div class="skel-title"><span class="skel md w70"></span></div><div class="skel-lines"><span class="skel sm w55"></span></div></div>
           </div>
           <div class="panel-b tall hidden" id="karmaPane"></div>
           <div class="panel-b tall hidden" id="likesPane"></div>
@@ -2325,6 +2384,70 @@
         </div>`;
     }
 
+    function skelMinePost(widths) {
+      const [t1 = "w70", t2 = "w100", t3 = "w85", t4 = "w55"] = widths || [];
+      return `
+        <div class="skel-row mine">
+          <div class="skel-eyebrow">
+            <span class="skel sm pill" style="width:58px"></span>
+            <span class="skel sm pill" style="width:36px"></span>
+            <span class="skel sm" style="width:44px"></span>
+            <span class="skel sm" style="width:78px"></span>
+            <span class="skel sm" style="width:64px"></span>
+          </div>
+          <div class="skel-title"><span class="skel lg ${t1}"></span></div>
+          <div class="skel-lines">
+            <span class="skel md ${t2}"></span>
+            <span class="skel md ${t3}"></span>
+            <span class="skel md ${t4}"></span>
+          </div>
+        </div>`;
+    }
+
+    function skelMineComment(widths) {
+      const [t1 = "w85", t2 = "w70"] = widths || [];
+      return `
+        <div class="skel-row skel-comment">
+          <div class="skel-eyebrow">
+            <span class="skel sm" style="width:10px"></span>
+            <span class="skel sm pill" style="width:88px"></span>
+            <span class="skel sm pill" style="width:64px"></span>
+            <span class="skel sm pill" style="width:58px"></span>
+            <span class="skel sm" style="width:64px"></span>
+          </div>
+          <div class="skel-title"><span class="skel md ${t1}"></span></div>
+          <div class="skel-lines"><span class="skel sm ${t2}"></span></div>
+        </div>`;
+    }
+
+    function skelMineToolbar() {
+      return `
+        <div class="mine-toolbar skel-toolbar">
+          <div class="counts"><span class="skel sm" style="width:148px"></span></div>
+          <div class="seg" aria-hidden="true">
+            <button type="button" class="active" tabindex="-1" disabled>All</button>
+            <button type="button" tabindex="-1" disabled>Posts</button>
+            <button type="button" tabindex="-1" disabled>Comments</button>
+          </div>
+        </div>`;
+    }
+
+    function skelStatsHtml() {
+      const cards = [
+        { k: "Citizen", v: "w70", h: "w55", tone: "" },
+        { k: "Karma", v: "w45", h: "w55", tone: "accent-mine" },
+        { k: "Posts", v: "w45", h: "w85", tone: "" },
+        { k: "Comments", v: "w45", h: "w85", tone: "" },
+        { k: "Votes", v: "w45", h: "w85", tone: "" },
+      ];
+      return cards.map((c, i) => `
+        <div class="stat ${c.tone}" style="animation-delay:${0.02 + i * 0.04}s">
+          <div class="k">${c.k}</div>
+          <div class="v"><span class="skel xl ${c.v}"></span></div>
+          <div class="h"><span class="skel sm ${c.h}"></span></div>
+        </div>`).join("");
+    }
+
     function skelBlock(label, rows) {
       return `
         <div class="skel-status" role="status" aria-live="polite">
@@ -2359,28 +2482,30 @@
         }
         return;
       }
+      if (PUBLIC_MODE) document.body.classList.add("public-mode");
+      const sub = $("subtitle");
+      if (sub && !document.body.classList.contains("is-settled")) {
+        const handle = VIEW_HANDLE || "citizen";
+        sub.textContent = `Public trail for ${handle} — loading what was said on the square.`;
+      }
       const mine = $("minePane");
       if (mine && !mine.querySelector(".skel-row")) {
-        fillSkel("minePane", skelBlock(
-          "Opening the ledger…",
-          skelRow(["w70", "w85", "w55"]) +
-          skelRow(["w55", "w100", "w70"]) +
-          skelRow(["w85", "w70", "w36"]) +
-          skelRow(["w45", "w85", "w28"])
-        ));
+        fillSkel("minePane",
+          skelMineToolbar() +
+          `<div class="section-label">Posts</div>` +
+          skelMinePost(["w70", "w100", "w85", "w55"]) +
+          skelMinePost(["w55", "w85", "w70", "w36"]) +
+          `<div class="section-label">Comments (newest first)</div>` +
+          skelMineComment(["w85", "w70"]) +
+          skelMineComment(["w70", "w55"])
+        );
       }
       const stats = $("stats");
       if (stats && !stats.querySelector(".skel")) {
-        const labels = ["Citizen", "Karma", "Posts", "Comments", "Votes"];
         stats.classList.add("skel-stats");
         stats.setAttribute("aria-busy", "true");
         stats.setAttribute("aria-hidden", "true");
-        stats.innerHTML = labels.map((k, i) => `
-          <div class="stat" style="animation-delay:${0.02 + i * 0.04}s">
-            <div class="k"><span class="skel sm pill" style="width:58px"></span></div>
-            <div class="v"><span class="skel xl ${i === 0 ? "w70" : "w45"}"></span></div>
-            <div class="h"><span class="skel sm ${i < 2 ? "w55" : "w85"}"></span></div>
-          </div>`).join("");
+        stats.innerHTML = skelStatsHtml();
         stats._f916Html = null;
       }
     }

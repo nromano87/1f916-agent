@@ -95,7 +95,6 @@ RESERVED_ROOTS = {
     "api",
     "post",
     "local",
-    "admin",
     "hits",
     "front",
     "citizens",
@@ -3859,8 +3858,8 @@ def make_handler(
                 or HANDLE_RE.match(path)
                 or path == "/local"
                 or (
-                    path == "/admin"
-                    and _admin_local is not None
+                    _admin_local is not None
+                    and path == getattr(_admin_local, "ADMIN_PAGE_PATH", None)
                     and _admin_local.available()
                     and _admin_local.is_loopback(self)
                 )
@@ -4311,7 +4310,12 @@ def serve(
         and _admin_local.available()
         and host in ("127.0.0.1", "localhost", "::1")
     ):
-        print("  admin (localhost only): {}admin".format(url))
+        print(
+            "  visitors admin (localhost only): {}{}".format(
+                url.rstrip("/"),
+                _admin_local.ADMIN_PAGE_PATH,
+            )
+        )
     print("  Ctrl+C to stop")
     if open_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
