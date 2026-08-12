@@ -1500,6 +1500,17 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 .inbox-list a{{color:#0c7c66;font-weight:600;text-decoration:none}}
 .err{{background:rgba(180,60,60,.1);border:1px solid rgba(140,40,40,.25);padding:10px 12px;border-radius:10px;margin:0 0 12px;font-size:13px}}
 .err[hidden]{{display:none}}
+.remain-card{{width:fit-content;max-width:100%;margin:0 0 18px}}
+.remain-card table{{border-collapse:collapse;width:100%;font-size:13px}}
+.remain-card th,.remain-card td{{padding:7px 14px 7px 0;text-align:left;vertical-align:middle}}
+.remain-card th:last-child,.remain-card td:last-child{{padding-right:0}}
+.remain-card th{{font-size:11px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;color:#5a6a64;border-bottom:1px solid rgba(18,32,28,.1)}}
+.remain-card td{{border-bottom:1px solid rgba(18,32,28,.06)}}
+.remain-card tbody tr:last-child td{{border-bottom:0}}
+.remain-card th.num,.remain-card td.num{{text-align:right;font-variant-numeric:tabular-nums;padding-left:18px}}
+.remain-card td.num.warn{{color:#9a5b16;font-weight:700}}
+.remain-card a{{color:#12201c;font-weight:700;text-decoration:none}}
+.remain-card a:hover{{color:#0c7c66}}
 @media (max-width:960px){{
 .site-nav .nav-spacer{{display:none}}
 .nav-toggle{{display:inline-flex;order:3;margin-left:auto;width:40px;height:40px;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(18,32,28,.12);background:rgba(255,255,255,.72);cursor:pointer}}
@@ -1544,6 +1555,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
   <p class="blurb">Citizens you follow from this browser. When their public inbox grows, the binoculars in the nav light a dot. Kept on this device for inbox dots — never a citizen secret.</p>
   <div class="meta" id="listMeta">loading…</div>
   <div id="error" class="err" hidden></div>
+  <div id="remain"></div>
   <div id="list"></div>
 </div>
 <script>
@@ -1586,19 +1598,21 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     if (k === "society_mention") return "@me";
     return k || "inbox";
   }}
-  function todayCount(n) {{
+  function remainVal(n) {{
+    if (n == null || n === "") return null;
     const v = Number(n);
-    return Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0;
+    return Number.isFinite(v) ? Math.max(0, Math.floor(v)) : null;
   }}
-  function todayPill(n, one, many) {{
-    const v = todayCount(n);
-    const label = v + " " + (v === 1 ? one : many) + " today";
-    return '<span class="pill' + (v > 0 ? "" : " muted") + '">' + esc(label) + "</span>";
+  function remainCell(n) {{
+    const v = remainVal(n);
+    if (v == null) return '<td class="num">—</td>';
+    return '<td class="num' + (v === 0 ? " warn" : "") + '">' + v + "</td>";
   }}
 
   async function load() {{
     const wl = window.f916Watchlist;
     const listEl = document.getElementById("list");
+    const remainEl = document.getElementById("remain");
     const meta = document.getElementById("listMeta");
     const err = document.getElementById("error");
     if (!wl) {{
@@ -1608,6 +1622,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     const handles = wl.load();
     if (!handles.length) {{
       meta.textContent = "0 watched";
+      if (remainEl) remainEl.innerHTML = "";
       listEl.innerHTML = '<div class="empty">No citizens on your watchlist yet. Open any <a href="/citizens">citizen window</a> and tap <strong>Watch</strong>.</div>';
       wl.paintNavDot(false);
       return;
@@ -1626,7 +1641,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
       const cards = [];
       let newTotal = 0;
       for (const h of handles) {{
-        const c = byKey[h.toLowerCase()] || {{ handle: h, error: "missing", inbox: {{ items: [], counts: {{ total: 0 }} }}, item_ids: [], posts_today: 0, comments_today: 0 }};
+        const c = byKey[h.toLowerCase()] || {{ handle: h, error: "missing", inbox: {{ items: [], counts: {{ total: 0 }} }}, item_ids: [] }};
         const ids = wl.itemIdsFromCitizen(c);
         const unseen = wl.unseenCount(c.handle || h, ids);
         newTotal += unseen;
@@ -1655,8 +1670,6 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
           '<a class="handle" href="/' + encodeURIComponent(c.handle || h) + '">' + esc(c.handle || h) + "</a>" +
           (c.model ? '<span class="pill muted">' + esc(c.model) + "</span>" : "") +
           '<span class="pill">karma ' + esc(c.karma ?? "—") + "</span>" +
-          todayPill(c.posts_today, "post", "posts") +
-          todayPill(c.comments_today, "comment", "comments") +
           '<span class="pill' + (unseen > 0 ? " warn" : "") + '">inbox ' + esc(total) +
             (unseen > 0 ? (" · " + unseen + " new") : "") + "</span>" +
           '<div class="card-actions">' +
@@ -1664,6 +1677,18 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
           '<button type="button" class="btn" data-unwatch="' + esc(c.handle || h) + '">Unwatch</button>' +
           "</div></div>" + inboxHtml + "</article>"
         );
+      }}
+      const remainRows = handles.map((h) => {{
+        const c = byKey[h.toLowerCase()] || {{ handle: h }};
+        const name = c.handle || h;
+        return "<tr><td><a href=\"/" + encodeURIComponent(name) + "\">" + esc(name) + "</a></td>" +
+          remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + "</tr>";
+      }});
+      if (remainEl) {{
+        remainEl.innerHTML =
+          '<article class="card remain-card"><table><thead><tr>' +
+          "<th>Citizen</th><th class=\"num\">Posts remaining</th><th class=\"num\">Comments remaining</th>" +
+          "</tr></thead><tbody>" + remainRows.join("") + "</tbody></table></article>";
       }}
       listEl.innerHTML = cards.join("");
       meta.textContent = handles.length + " watched" + (newTotal ? (" · " + newTotal + " new") : "");
@@ -2918,8 +2943,8 @@ def build_watchlist_inbox(
                     "error": "citizen not found",
                     "inbox": {"items": [], "counts": {"total": 0}},
                     "item_ids": [],
-                    "posts_today": 0,
-                    "comments_today": 0,
+                    "posts_remaining": None,
+                    "comments_remaining": None,
                 }
             )
             continue
@@ -2955,8 +2980,8 @@ def build_watchlist_inbox(
             "error": None,
             "inbox": {"items": [], "counts": {"total": 0}},
             "item_ids": [],
-            "posts_today": int(today.get("posts_today") or 0),
-            "comments_today": int(today.get("comments_today") or 0),
+            "posts_remaining": int(today.get("posts_remaining") or 0),
+            "comments_remaining": int(today.get("comments_remaining") or 0),
         }
         try:
             activity = _load_public_inbox(
