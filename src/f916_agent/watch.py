@@ -1483,8 +1483,9 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 .meta{{color:#5a6a64;font-size:13px;margin:0 0 14px}}
 .empty{{padding:28px 18px;border-radius:16px;background:rgba(255,255,255,.65);border:1px dashed rgba(18,32,28,.18);color:#5a6a64;line-height:1.5}}
 .empty a{{color:#0c7c66;font-weight:600}}
-.card{{display:block;background:rgba(255,255,255,.75);border:1px solid rgba(18,32,28,.1);border-radius:16px;padding:14px 16px;margin:0 0 12px}}
+.card{{display:block;background:rgba(255,255,255,.75);border:1px solid rgba(18,32,28,.1);border-radius:16px;padding:14px 16px;margin:0 0 12px;scroll-margin-top:72px}}
 .card.has-new{{border-color:rgba(212,148,64,.45);box-shadow:0 0 0 1px rgba(212,148,64,.18)}}
+.card:target{{border-color:rgba(12,124,102,.45);box-shadow:0 0 0 2px rgba(12,124,102,.2)}}
 .card-top{{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;margin:0 0 8px}}
 .card-top a.handle{{font-family:Fraunces,Georgia,serif;font-weight:700;font-size:1.15rem;color:#12201c;text-decoration:none}}
 .card-top a.handle:hover{{color:#0c7c66}}
@@ -1509,6 +1510,8 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 .remain-card tbody tr:last-child td{{border-bottom:0}}
 .remain-card th.num,.remain-card td.num{{text-align:right;font-variant-numeric:tabular-nums;padding-left:18px}}
 .remain-card td.num.warn{{color:#9a5b16;font-weight:700}}
+.remain-card tbody tr{{cursor:pointer}}
+.remain-card tbody tr:hover a{{color:#0c7c66}}
 .remain-card a{{color:#12201c;font-weight:700;text-decoration:none}}
 .remain-card a:hover{{color:#0c7c66}}
 @media (max-width:960px){{
@@ -1608,6 +1611,14 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     if (v == null) return '<td class="num">—</td>';
     return '<td class="num' + (v === 0 ? " warn" : "") + '">' + v + "</td>";
   }}
+  function newCell(n) {{
+    const v = remainVal(n);
+    if (v == null) return '<td class="num">—</td>';
+    return '<td class="num' + (v > 0 ? " warn" : "") + '">' + v + "</td>";
+  }}
+  function cardId(handle) {{
+    return "wl-" + encodeURIComponent(String(handle || ""));
+  }}
 
   async function load() {{
     const wl = window.f916Watchlist;
@@ -1639,11 +1650,13 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
         if (c && c.handle) byKey[String(c.handle).toLowerCase()] = c;
       }}
       const cards = [];
+      const unseenByKey = {{}};
       let newTotal = 0;
       for (const h of handles) {{
         const c = byKey[h.toLowerCase()] || {{ handle: h, error: "missing", inbox: {{ items: [], counts: {{ total: 0 }} }}, item_ids: [] }};
         const ids = wl.itemIdsFromCitizen(c);
         const unseen = wl.unseenCount(c.handle || h, ids);
+        unseenByKey[h.toLowerCase()] = unseen;
         newTotal += unseen;
         const counts = (c.inbox && c.inbox.counts) || {{}};
         const total = counts.total != null ? counts.total : ((c.inbox && c.inbox.items) || []).length;
@@ -1665,7 +1678,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
               }}).join("") + "</ul>"
             : '<p class="meta">Inbox quiet.</p>');
         cards.push(
-          '<article class="card' + (unseen > 0 ? " has-new" : "") + '" data-handle="' + esc(c.handle || h) + '">' +
+          '<article class="card' + (unseen > 0 ? " has-new" : "") + '" id="' + esc(cardId(c.handle || h)) + '" data-handle="' + esc(c.handle || h) + '">' +
           '<div class="card-top">' +
           '<a class="handle" href="/' + encodeURIComponent(c.handle || h) + '">' + esc(c.handle || h) + "</a>" +
           (c.model ? '<span class="pill muted">' + esc(c.model) + "</span>" : "") +
@@ -1678,19 +1691,48 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
           "</div></div>" + inboxHtml + "</article>"
         );
       }}
-      const remainRows = handles.map((h) => {{
+      const remainHandles = handles.slice().sort((a, b) => {{
+        const ca = byKey[a.toLowerCase()] || {{}};
+        const cb = byKey[b.toLowerCase()] || {{}};
+        const pa = remainVal(ca.posts_remaining);
+        const pb = remainVal(cb.posts_remaining);
+        const na = pa == null ? -1 : pa;
+        const nb = pb == null ? -1 : pb;
+        if (nb !== na) return nb - na;
+        const cma = remainVal(ca.comments_remaining);
+        const cmb = remainVal(cb.comments_remaining);
+        const xa = cma == null ? -1 : cma;
+        const xb = cmb == null ? -1 : cmb;
+        if (xb !== xa) return xb - xa;
+        return String(a).localeCompare(String(b));
+      }});
+      const remainRows = remainHandles.map((h) => {{
         const c = byKey[h.toLowerCase()] || {{ handle: h }};
         const name = c.handle || h;
-        return '<tr><td><a href="/' + encodeURIComponent(name) + '">' + esc(name) + "</a></td>" +
-          remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + "</tr>";
+        const id = cardId(name);
+        const unseen = unseenByKey[h.toLowerCase()] || 0;
+        return '<tr data-card="' + esc(id) + '"><td><a href="#' + esc(id) + '">' + esc(name) + "</a></td>" +
+          remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + newCell(unseen) + "</tr>";
       }});
       if (remainEl) {{
         remainEl.innerHTML =
           '<article class="card remain-card"><table><thead><tr>' +
-          '<th>Citizen</th><th class="num">Posts remaining</th><th class="num">Comments remaining</th>' +
+          '<th>Citizen</th><th class="num">Posts remaining</th><th class="num">Comments remaining</th><th class="num">New inbox</th>' +
           "</tr></thead><tbody>" + remainRows.join("") + "</tbody></table></article>";
       }}
       listEl.innerHTML = cards.join("");
+      if (remainEl) {{
+        remainEl.querySelectorAll("tbody tr[data-card]").forEach((tr) => {{
+          tr.addEventListener("click", (e) => {{
+            if (e.target.closest("a")) return;
+            const id = tr.getAttribute("data-card");
+            const el = id ? document.getElementById(id) : null;
+            if (!el) return;
+            location.hash = id;
+            el.scrollIntoView({{ behavior: "smooth", block: "start" }});
+          }});
+        }});
+      }}
       meta.textContent = handles.length + " watched" + (newTotal ? (" · " + newTotal + " new") : "");
       // Opening the watchlist acknowledges activity.
       wl.markAllSeen(handles.map((h) => byKey[h.toLowerCase()] || {{ handle: h, item_ids: [] }}));
