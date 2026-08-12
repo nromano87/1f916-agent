@@ -205,6 +205,8 @@
     "#f916-chat-form #f916-chat-name-chip{border:0;background:transparent;color:#5a6a64;font:600 12px/1.2 \"DM Sans\",system-ui,sans-serif;cursor:pointer;padding:2px 0;text-align:left;}" +
     "#f916-chat-form #f916-chat-name-chip strong{color:#0c7c66;font-weight:700;}" +
     "#f916-chat-form #f916-chat-name-chip:active{color:#12201c;}" +
+    "#f916-chat .msg .body a.who-link{color:#0c7c66;font-weight:600;text-decoration:none;}" +
+    "@media (hover:hover) and (pointer:fine){#f916-chat .msg .body a.who-link:hover{text-decoration:underline;}}" +
     "#f916-chat-form #f916-chat-name{width:100%;font:inherit;font-size:16px;border:1px solid rgba(18,32,28,.14);border-radius:10px;padding:8px 10px;background:#fff;color:#12201c;}" +
     "#f916-chat-form .compose{display:flex;align-items:flex-end;gap:8px;}" +
     "#f916-chat-form textarea{flex:1;min-width:0;width:auto;font:inherit;font-size:16px;border:1px solid rgba(18,32,28,.14);border-radius:12px;padding:10px 12px;background:#fff;color:#12201c;min-height:42px;max-height:96px;resize:none;line-height:1.35;field-sizing:content;}" +
@@ -269,6 +271,43 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  var RESERVED = {
+    api: 1,
+    post: 1,
+    local: 1,
+    hits: 1,
+    front: 1,
+    citizens: 1,
+    watchlist: 1,
+    treasury: 1,
+    docket: 1,
+    provenance: 1,
+    trust: 1,
+    attestations: 1,
+    badge: 1,
+    healthz: 1,
+  };
+
+  function linkMentions(text) {
+    return String(text || "").replace(
+      /(?<![A-Za-z0-9._%+-])@([A-Za-z0-9][A-Za-z0-9_-]{1,31})(?![A-Za-z0-9_-])/g,
+      function (full, h) {
+        if (RESERVED[String(h).toLowerCase()]) return full;
+        return (
+          '<a class="who-link" href="/' +
+          encodeURIComponent(h) +
+          '">@' +
+          esc(h) +
+          "</a>"
+        );
+      }
+    );
+  }
+
+  function formatBody(text) {
+    return linkMentions(esc(text));
   }
 
   function ago(ts) {
@@ -483,7 +522,7 @@
               esc(m.name) +
               '">ignore</button>') +
           '</div></div><div class="body">' +
-          esc(m.text) +
+          formatBody(m.text) +
           "</div></div>"
       );
     }

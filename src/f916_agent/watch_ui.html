@@ -2825,6 +2825,31 @@
       return `<a class="who-link" href="${esc(href)}">${esc(label)}</a>`;
     }
 
+    /** @handle → /{handle} links in already-escaped / HTML text (outside anchors/code). */
+    function linkMentions(html) {
+      const src = String(html ?? "");
+      const re = /<a\b[^>]*>[\s\S]*?<\/a>|<code>[\s\S]*?<\/code>|<pre\b[^>]*>[\s\S]*?<\/pre>/g;
+      let out = "";
+      let last = 0;
+      let m;
+      const linkify = (text) =>
+        text.replace(
+          /(?<![A-Za-z0-9._%+-])@([A-Za-z0-9][A-Za-z0-9_-]{1,31})(?![A-Za-z0-9_-])/g,
+          (full, h) => {
+            const href = citizenHref(h);
+            if (!href) return full;
+            return `<a class="who-link" href="${esc(href)}">@${esc(h)}</a>`;
+          }
+        );
+      while ((m = re.exec(src))) {
+        out += linkify(src.slice(last, m.index));
+        out += m[0];
+        last = m.index + m[0].length;
+      }
+      out += linkify(src.slice(last));
+      return out;
+    }
+
     /** Safe Markdown-ish → HTML for post/comment bodies. */
     function md(src, handle) {
       let raw = String(src ?? "").replace(/\r\n?/g, "\n").trim();
@@ -2920,6 +2945,7 @@
       }
       let html = blocks.join("\n");
       fences.forEach((f, idx) => { html = html.replace(`@@FENCE${idx}@@`, f); });
+      html = linkMentions(html);
       return highlightMentions(html, handle != null ? handle : viewedHandle());
     }
 

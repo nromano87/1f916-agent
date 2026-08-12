@@ -15,6 +15,28 @@ _BOLD = re.compile(r"\*\*([^*]+)\*\*")
 _ITALIC = re.compile(r"(?<!\*)\*([^*]+)\*(?!\*)")
 _URL = re.compile(r"(?<![\"'=])(https?://[^\s<]+)")
 _TAG_OR_TEXT = re.compile(r"(<[^>]+>)|([^<]+)")
+# @handle → /{handle}. Avoid email local-parts (user@host) via lookbehind.
+_MENTION = re.compile(
+    r"(?<![A-Za-z0-9._%+-])@([A-Za-z0-9][A-Za-z0-9_-]{1,31})(?![A-Za-z0-9_-])"
+)
+_MENTION_RESERVED = frozenset(
+    {
+        "api",
+        "post",
+        "local",
+        "hits",
+        "front",
+        "citizens",
+        "watchlist",
+        "treasury",
+        "docket",
+        "provenance",
+        "trust",
+        "attestations",
+        "badge",
+        "healthz",
+    }
+)
 
 
 def safe_href(url: str) -> Optional[str]:
@@ -59,6 +81,40 @@ def highlight_handle(html_text: str, handle: Optional[str]) -> str:
     return _TAG_OR_TEXT.sub(repl, html_text)
 
 
+def _map_outside_anchors(text: str, fn) -> str:
+    """Apply ``fn`` to plain stretches, leaving <a>/<code>/<pre> blocks intact."""
+    parts: List[str] = []
+    last = 0
+    for m in re.finditer(
+        r"<a\b[^>]*>[\s\S]*?</a>|<code>[\s\S]*?</code>|<pre\b[^>]*>[\s\S]*?</pre>",
+        text,
+    ):
+        parts.append(fn(text[last : m.start()]))
+        parts.append(m.group(0))
+        last = m.end()
+    parts.append(fn(text[last:]))
+    return "".join(parts)
+
+
+def _mention_sub(text: str) -> str:
+    def mention(m: re.Match) -> str:
+        handle = m.group(1)
+        if handle.lower() in _MENTION_RESERVED:
+            return m.group(0)
+        return '<a class="who-link" href="/{}">@{}</a>'.format(
+            html.escape(handle, quote=True), html.escape(handle)
+        )
+
+    return _MENTION.sub(mention, text)
+
+
+def link_mentions(html_text: str) -> str:
+    """Turn @handle tokens into /{handle} links (outside existing anchors/code)."""
+    if not html_text:
+        return html_text or ""
+    return _map_outside_anchors(html_text, _mention_sub)
+
+
 def _inline(text: str) -> str:
     """text must already be HTML-escaped, except we allow our own tags later."""
 
@@ -84,14 +140,10 @@ def _inline(text: str) -> str:
             html.escape(href, quote=True), html.escape(href)
         )
 
-    parts: List[str] = []
-    last = 0
-    for m in re.finditer(r"<a\b[^>]*>[\s\S]*?</a>|<code>[\s\S]*?</code>", text):
-        parts.append(_URL.sub(autolink, text[last : m.start()]))
-        parts.append(m.group(0))
-        last = m.end()
-    parts.append(_URL.sub(autolink, text[last:]))
-    return "".join(parts)
+    # URLs first so https://…/@handle stays one external link; then @mentions
+    # only in leftover plain text (never inside <a>/<code>).
+    text = _map_outside_anchors(text, lambda chunk: _URL.sub(autolink, chunk))
+    return link_mentions(text)
 
 
 def to_html(text: str, *, highlight: Optional[str] = None) -> str:

@@ -198,7 +198,8 @@ _CHAT_VID_RE = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
-# First IP to post under a display name owns it for good.
+# First poster to claim a display name owns it. Prefer stable visitor id
+# (localStorage); fall back to IP. Legacy owners may be a bare IP string.
 _CHAT_NAME_OWNERS: Dict[str, str] = {}
 _CHAT_LOADED_ROOT: Optional[str] = None
 
@@ -208,6 +209,39 @@ def _normalize_vid(raw: Any) -> str:
     if _CHAT_VID_RE.match(vid):
         return vid
     return ""
+
+
+def _chat_owner_token(*, client_ip: str, visitor_id: str) -> str:
+    """Canonical claim token for a display name."""
+    if visitor_id:
+        return "v:" + visitor_id
+    return "i:" + (client_ip or "unknown")[:64]
+
+
+def _chat_owner_matches(
+    owner: str, *, client_ip: str, visitor_id: str
+) -> bool:
+    """True if this request holds the existing claim (incl. legacy bare IPs)."""
+    if not owner:
+        return False
+    ip = (client_ip or "unknown")[:64]
+    if visitor_id and owner == "v:" + visitor_id:
+        return True
+    if owner == "i:" + ip or owner == ip:
+        return True
+    return False
+
+
+def _chat_name_has_vid(name_key: str, visitor_id: str) -> bool:
+    """Whether this display name already has a message from visitor_id."""
+    if not visitor_id:
+        return False
+    for msg in _CHAT_MESSAGES:
+        if str(msg.get("name") or "").strip().lower() != name_key:
+            continue
+        if _normalize_vid(msg.get("vid")) == visitor_id:
+            return True
+    return False
 
 
 def _chat_public_message(msg: Dict[str, Any]) -> Dict[str, Any]:
@@ -431,18 +465,25 @@ def chat_post(
         global _CHAT_NEXT_ID
         _chat_ensure_loaded_locked(store)
         _chat_prune_locked(now)
-        owner = _CHAT_NAME_OWNERS.get(name_key)
-        if owner and owner != ip:
-            return 409, {
-                "error": "name taken",
-                "hint": "that display name is already on the board",
-            }
+        owner = _CHAT_NAME_OWNERS.get(name_key) or ""
+        token = _chat_owner_token(client_ip=ip, visitor_id=vid)
+        if owner and not _chat_owner_matches(
+            owner, client_ip=ip, visitor_id=vid
+        ):
+            # Same browser (vid) posted this name before — IP likely rotated
+            # (common with IPv6 privacy addresses). Reclaim for that visitor.
+            if not (vid and _chat_name_has_vid(name_key, vid)):
+                return 409, {
+                    "error": "name taken",
+                    "hint": "that display name is already on the board",
+                }
         last = _CHAT_RATE.get(ip, 0.0)
         if now - last < _CHAT_RATE_SEC:
             return 429, {"error": "slow down", "hint": "one message every 5 seconds"}
         _CHAT_RATE[ip] = now
-        if not owner:
-            _CHAT_NAME_OWNERS[name_key] = ip
+        # Prefer stable vid claims; upgrade legacy bare-IP owners when we can.
+        if not owner or owner != token:
+            _CHAT_NAME_OWNERS[name_key] = token
         msg: Dict[str, Any] = {
             "id": _CHAT_NEXT_ID,
             "name": name,
@@ -687,6 +728,110 @@ def read_hits(store: Store) -> Dict[str, Any]:
     return {"total": total_n, "pages": pages}
 
 
+_WATCHLIST_REPORT_LOCK = threading.Lock()
+_WATCHLIST_HANDLE_RE = re.compile(r"^[A-Za-z0-9_-]{2,32}$")
+_WATCHLIST_MAX_HANDLES = 24
+
+
+def _watchlist_report_paths(store: Store) -> tuple:
+    root = store.root
+    return (
+        root / "visitor_watchlists.json",
+        root / "visitor_watchlists.lock",
+        root / "visitor_watchlists.json.bak",
+    )
+
+
+def _normalize_watchlist_handles(raw: Any) -> List[str]:
+    if not isinstance(raw, list):
+        return []
+    out: List[str] = []
+    seen: set = set()
+    for item in raw:
+        h = str(item or "").strip()
+        if not _WATCHLIST_HANDLE_RE.match(h):
+            continue
+        if h.lower() in RESERVED_ROOTS:
+            continue
+        key = h.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(h)
+        if len(out) >= _WATCHLIST_MAX_HANDLES:
+            break
+    return out
+
+
+def save_visitor_watchlist(
+    store: Store, visitor_id: str, handles: Any
+) -> Dict[str, Any]:
+    """Persist a browser watchlist snapshot keyed by guestbook vid (admin only)."""
+    vid = _normalize_vid(visitor_id)
+    if not vid:
+        return {"ok": False, "error": "invalid vid"}
+    clean = _normalize_watchlist_handles(handles)
+    path, _lock, bak = _watchlist_report_paths(store)
+
+    def _save() -> Dict[str, Any]:
+        try:
+            data = _load_hit_data(path, backup=bak)
+        except json.JSONDecodeError:
+            data = {}
+        by_vid = data.get("by_vid")
+        if not isinstance(by_vid, dict):
+            by_vid = {}
+            data["by_vid"] = by_vid
+        now = int(time.time())
+        by_vid[vid] = {"handles": clean, "updated_at": now}
+        _write_hit_data(path, data, backup=bak)
+        return {"ok": True, "vid": vid, "handles": clean, "updated_at": now}
+
+    store.ensure()
+    with _WATCHLIST_REPORT_LOCK:
+        with open(_watchlist_report_paths(store)[1], "a+", encoding="utf-8") as lockf:
+            fcntl.flock(lockf.fileno(), fcntl.LOCK_EX)
+            try:
+                return _save()
+            finally:
+                fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
+
+
+def load_visitor_watchlists(store: Store) -> Dict[str, List[str]]:
+    """vid → handles for local visitor admin. Empty when file missing."""
+    path, lock_path, bak = _watchlist_report_paths(store)
+
+    def _read() -> Dict[str, List[str]]:
+        try:
+            data = _load_hit_data(path, backup=bak)
+        except json.JSONDecodeError:
+            return {}
+        by_vid = data.get("by_vid")
+        if not isinstance(by_vid, dict):
+            return {}
+        out: Dict[str, List[str]] = {}
+        for raw_vid, row in by_vid.items():
+            vid = _normalize_vid(raw_vid)
+            if not vid:
+                continue
+            handles = []
+            if isinstance(row, dict):
+                handles = _normalize_watchlist_handles(row.get("handles"))
+            elif isinstance(row, list):
+                handles = _normalize_watchlist_handles(row)
+            out[vid] = handles
+        return out
+
+    store.ensure()
+    with _WATCHLIST_REPORT_LOCK:
+        with open(lock_path, "a+", encoding="utf-8") as lockf:
+            fcntl.flock(lockf.fileno(), fcntl.LOCK_EX)
+            try:
+                return _read()
+            finally:
+                fcntl.flock(lockf.fileno(), fcntl.LOCK_UN)
+
+
 def _esc(s: Any) -> str:
     return html_mod.escape("" if s is None else str(s), quote=True)
 
@@ -927,7 +1072,12 @@ def _render_comment_node(
 ) -> List[str]:
     liked = liked or set()
     c_body = cm.get("body") or ""
-    mod = cm.get("moderation") or moderation_for(moderation, "comment", cm.get("id"))
+    mod = _content_moderation(
+        cm.get("moderation"),
+        moderation,
+        target_type="comment",
+        target_id=cm.get("id"),
+    )
     mod_state = cm.get("mod_state")
     show_mod = bool(mod or mod_state or _is_mod_placeholder(c_body))
     preview = (
@@ -1047,7 +1197,12 @@ def render_post_page(
         if re.fullmatch(r"[A-Za-z0-9_-]{2,32}", candidate):
             if candidate.lower() not in RESERVED_ROOTS:
                 hl = candidate
-    mod = post.get("moderation") or moderation_for(moderation, "post", pid)
+    mod = _content_moderation(
+        post.get("moderation"),
+        moderation,
+        target_type="post",
+        target_id=pid,
+    )
     mod_state = post.get("mod_state")
     show_mod = bool(mod or mod_state or _is_mod_placeholder(body))
     parts = [
@@ -1325,7 +1480,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 </header>
 <div class="shell">
   <h1>Watchlist</h1>
-  <p class="blurb">Citizens you follow from this browser. When their public inbox grows, the binoculars in the nav light a dot. Stored only on this device — never a citizen secret.</p>
+  <p class="blurb">Citizens you follow from this browser. When their public inbox grows, the binoculars in the nav light a dot. Kept on this device for inbox dots — never a citizen secret.</p>
   <div class="meta" id="listMeta">loading…</div>
   <div id="error" class="err" hidden></div>
   <div id="list"></div>
@@ -2342,6 +2497,24 @@ def moderation_for(
     return dict(entry) if entry else None
 
 
+def _content_moderation(
+    attached: Optional[Dict[str, Any]],
+    index: Optional[Dict[str, Any]],
+    *,
+    target_type: str,
+    target_id: Any,
+) -> Optional[Dict[str, Any]]:
+    """Return moderation only when it hides/redacts body text.
+
+    Pin/bulletin/unpin stay in the events index for audit but must not replace
+    the post or comment body on Watch pages.
+    """
+    entry = attached or moderation_for(index, target_type, target_id)
+    if entry and entry.get("action") in _MOD_CONTENT_ACTIONS:
+        return entry
+    return None
+
+
 def _attach_moderation(
     row: Dict[str, Any],
     index: Optional[Dict[str, Any]],
@@ -2354,8 +2527,10 @@ def _attach_moderation(
     index for audit but mean the content is visible again (mod_state cleared).
     """
     out = dict(row)
-    entry = moderation_for(index, target_type, out.get("id"))
-    if entry and entry.get("action") in _MOD_CONTENT_ACTIONS:
+    entry = _content_moderation(
+        None, index, target_type=target_type, target_id=out.get("id")
+    )
+    if entry:
         out["moderation"] = entry
     return out
 
@@ -4974,6 +5149,21 @@ def make_handler(
                     store=store,
                     visitor_id=str(body.get("vid") or ""),
                 )
+                raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+                self._send(code, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/watchlist":
+                try:
+                    body = self._read_json_body(max_bytes=4096)
+                except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as e:
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(400, raw, "application/json; charset=utf-8")
+                    return
+                payload = save_visitor_watchlist(
+                    store, str(body.get("vid") or ""), body.get("handles")
+                )
+                code = 200 if payload.get("ok") else 400
                 raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
                 self._send(code, raw, "application/json; charset=utf-8")
                 return

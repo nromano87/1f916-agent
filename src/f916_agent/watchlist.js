@@ -42,6 +42,57 @@
     try {
       localStorage.setItem(LIST_KEY, JSON.stringify(handles.slice(0, MAX)));
     } catch (_) {}
+    scheduleReport();
+  }
+
+  function loadVisitorId() {
+    const VID_KEY = "f916_vid";
+    const re =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    let vid = "";
+    try {
+      if (window.__f916Vid) vid = String(window.__f916Vid).trim().toLowerCase();
+    } catch (_) {}
+    if (!re.test(vid)) {
+      try {
+        vid = (localStorage.getItem(VID_KEY) || "").trim().toLowerCase();
+      } catch (_) {}
+    }
+    if (!re.test(vid)) return "";
+    return vid.toLowerCase();
+  }
+
+  let reportTimer = null;
+  let reportInflight = false;
+  function scheduleReport() {
+    if (reportTimer) clearTimeout(reportTimer);
+    reportTimer = setTimeout(() => {
+      reportTimer = null;
+      reportWatchlist();
+    }, 250);
+  }
+
+  async function reportWatchlist() {
+    const vid = loadVisitorId();
+    if (!vid || reportInflight) {
+      if (!vid) return;
+      scheduleReport();
+      return;
+    }
+    reportInflight = true;
+    try {
+      await fetch("/api/watchlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vid: vid, handles: loadList() }),
+        cache: "no-store",
+        keepalive: true,
+      });
+    } catch (_) {
+      /* best-effort guestbook analytics */
+    } finally {
+      reportInflight = false;
+    }
   }
 
   function loadSeen() {
@@ -376,6 +427,7 @@
     ensureNavButton();
     bootCitizenToggle();
     schedulePoll(true);
+    scheduleReport();
   }
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", boot);
