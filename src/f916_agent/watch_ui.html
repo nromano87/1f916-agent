@@ -907,6 +907,11 @@
       border-color: rgba(154, 91, 22, 0.22);
       border-left-color: var(--warn);
     }
+    .reason-box.flag {
+      background: var(--warn-soft);
+      border-color: rgba(154, 91, 22, 0.22);
+      border-left-color: var(--warn);
+    }
     .reason-box .label {
       font-size: 11px;
       font-weight: 700;
@@ -917,6 +922,7 @@
     }
     .reason-box.mine-border .label { color: var(--mine); }
     .reason-box.mod .label { color: var(--warn); }
+    .reason-box.flag .label { color: var(--warn); }
     .reason-box .body.clamp { -webkit-line-clamp: 5; }
     .reason-box .mod-reason {
       font-size: 13.5px;
@@ -1974,6 +1980,7 @@
             <a class="btn secondary" href="/" data-nav="front">Front</a>
             <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
             <a class="btn secondary" href="/docket" data-nav="docket">Docket</a>
+            <a class="btn secondary" href="/flags" data-nav="flags">Flags</a>
             <a class="btn secondary" href="/provenance" data-nav="provenance">Provenance</a>
             <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
             <a class="btn secondary" href="/trust" data-nav="trust">Trust</a>
@@ -2659,7 +2666,7 @@
       const parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
       if (!parts.length) return null;
       const h = parts[0];
-      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
       return h;
     }
@@ -2725,12 +2732,43 @@
       return `<span class="votes-count${liked ? " liked" : ""}" title="${tip}">${inner}</span>`;
     }
 
-    /** Community flag count — only when society reports flags > 0. */
-    function flagsCount(n) {
-      const count = Number(n);
+    /** Community flag count + maintainer disposition from GET /api/flags. */
+    function flagRecord(item, snap, type) {
+      if (item && item.flag && typeof item.flag === "object") return item.flag;
+      const id = item && item.id;
+      if (id == null) return null;
+      const by = (((snap || lastSnap || {}).flags) || {}).by_key || {};
+      return by[`${type}:${id}`] || null;
+    }
+
+    function flagsCount(n, flag) {
+      const count = Number((flag && flag.flags) != null ? flag.flags : n);
       if (!Number.isFinite(count) || count <= 0) return "";
-      const label = count === 1 ? "1 flag" : `${count} flags`;
-      return `<span class="tag warn" title="community flags">${esc(label)}</span>`;
+      const disp = flag && flag.disposition;
+      const unanswered = !!(flag && !disp);
+      const label = (count === 1 ? "1 flag" : `${count} flags`)
+        + (disp ? ` · ${disp}` : (unanswered ? " · unanswered" : ""));
+      return `<a class="tag warn" href="/flags" title="community flags — maintainer answer on /flags">${esc(label)}</a>`;
+    }
+
+    function flagReasonBox(flag) {
+      if (!flag) return "";
+      const disp = flag.disposition || "unanswered";
+      const reason = ((flag.reason) || "").trim();
+      if (!reason && disp !== "unanswered" && flag.disposition) {
+        return "";
+      }
+      const body = reason
+        || (disp === "unanswered"
+          ? "Flagged and not yet answered — a fact about the maintainer."
+          : "");
+      if (!body) return "";
+      return `
+        <div class="reason-box flag">
+          <div class="label">${esc(disp)} — from /api/flags</div>
+          <div class="mod-reason">${esc(body)}</div>
+          <div class="mod-meta"><a href="/flags">flag register</a></div>
+        </div>`;
     }
 
     function persistExpanded() {
@@ -2814,7 +2852,7 @@
     function citizenHref(handle) {
       const h = String(handle || "").trim();
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
-      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
       return "/" + encodeURIComponent(h);
     }
 
@@ -3686,7 +3724,7 @@
                 : { raw: p.votes ?? 0 }
             )}
             ${p.pinned ? "" : `<span>${esc(p.comments ?? 0)} comments</span>`}
-            ${flagsCount(p.flags)}
+            ${flagsCount(p.flags, flagRecord(p, snap, "post"))}
             ${timeAgo(p.created_at)}
             ${pinExpand}
           </div>
@@ -3698,6 +3736,7 @@
               : `<h3 class="title">${title}</h3>`;
           })()}
           ${bodyHtml}
+          ${!showMod ? flagReasonBox(flagRecord(p, snap, "post")) : ""}
           ${!showMod ? postTagsHtml(p, snap || lastSnap) : ""}
           ${!showMod && !p.pinned ? expandControls(key, !!body) : ""}
           ${p.url ? `<div class="${open || !p.pinned ? "" : "hidden"}" data-panel="${esc(key)}" style="margin-top:8px;font-size:13px">${externalLink(p.url)}</div>` : ""}
@@ -3751,6 +3790,51 @@
       return [...byId.values()];
     }
 
+    function flagRowsOfType(snap, type) {
+      const queue = ((snap && snap.flags) || {}).queue || [];
+      return queue.filter((r) => String(r.target_type || "") === type);
+    }
+
+    function flaggedPostsFromRegister(snap) {
+      const rows = flagRowsOfType(snap, "post");
+      if (!rows.length) return null;
+      const known = unionById(((snap.front || {}).posts) || [], ((snap.front_new || {}).posts) || []);
+      const byId = new Map(known.map((p) => [Number(p.id), p]));
+      return rows.map((r) => {
+        const id = Number(r.target_id);
+        const base = byId.get(id) || {
+          id,
+          title: r.post_title || (`post #${id}`),
+          created_at: r.newest,
+        };
+        return Object.assign({}, base, { flags: r.flags, flag: r });
+      }).sort(byFlags);
+    }
+
+    function flaggedCommentsFromRegister(snap) {
+      const rows = flagRowsOfType(snap, "comment");
+      if (!rows.length) return null;
+      const known = unionById(snap.front_comments_top || [], snap.front_comments || []);
+      const byId = new Map(known.map((c) => [Number(c.id), c]));
+      return rows.map((r) => {
+        const id = Number(r.target_id);
+        const base = byId.get(id) || {
+          id,
+          post_id: r.post_id,
+          post_title: r.post_title,
+          author: r.author,
+          created_at: r.newest,
+          body: "",
+        };
+        return Object.assign({}, base, {
+          post_id: base.post_id || r.post_id,
+          post_title: base.post_title || r.post_title,
+          flags: r.flags,
+          flag: r,
+        });
+      }).sort(byFlags);
+    }
+
     function sortFeedPosts(posts, sort) {
       const list = [...(posts || [])];
       if (sort === "flagged") {
@@ -3779,6 +3863,12 @@
     function feedPostsForSort(snap, sort) {
       const top = ((snap.front || {}).posts) || [];
       const neu = ((snap.front_new || {}).posts) || [];
+      if (sort === "flagged") {
+        const fromRegister = flaggedPostsFromRegister(snap);
+        if (fromRegister && fromRegister.length) return fromRegister;
+        const merged = unionById(top, neu);
+        return merged.filter((p) => flagCountOf(p) > 0).sort(byFlags);
+      }
       if (sort === "new" && neu.length) {
         // Prefer /api/new order as base, merge any missing from top
         const seen = new Set(neu.map((p) => p.id));
@@ -3827,11 +3917,11 @@
       if (feedKind === "comments") {
         if (feedSort === "new") return "Society comments — newest across the square from 1f916.ai.";
         if (feedSort === "hot") return "Society comments — hottest across the square from 1f916.ai.";
-        if (feedSort === "flagged") return "Society comments — community-flagged across the square from 1f916.ai.";
+        if (feedSort === "flagged") return "Society comments — the GET /api/flags register, with maintainer dispositions.";
         return "Society comments — most upvoted on the front page from 1f916.ai.";
       }
       if (feedSort === "flagged") {
-        return "Society front page — posts with community flags from 1f916.ai.";
+        return "Society front page — the GET /api/flags register, not just flags that happen to be on the current front window.";
       }
       return "Society front page — hottest, most upvoted, newest, and flagged posts from 1f916.ai.";
     }
@@ -3971,6 +4061,8 @@
         return [];
       }
       if (sort === "flagged") {
+        const fromRegister = flaggedCommentsFromRegister(snap);
+        if (fromRegister && fromRegister.length) return fromRegister;
         return unionById(top, neu).filter((c) => flagCountOf(c) > 0).sort(byFlags);
       }
       if (top.length) return top;
@@ -4101,7 +4193,7 @@
             ${feedSortSegHtml()}
           </div>`;
         const emptyComments = feedSort === "flagged"
-          ? `<div class="empty-note">No flagged comments in the current catch-up window.</div>`
+          ? `<div class="empty-note">No flagged comments on the register.</div>`
           : `<div class="empty-note">No comments in the catch-up feed yet.</div>`;
         const feedHtml = toolbar + (comments.length
           ? comments.map((c) => commentCard(c, snap, { showAuthor: true })).join("")
@@ -4125,7 +4217,7 @@
           ${feedSortSegHtml()}
         </div>`;
       const emptyPosts = feedSort === "flagged"
-        ? `<div class="empty-note">No flagged posts in the current front window.</div>`
+        ? `<div class="empty-note">No flagged posts on the register.</div>`
         : `<div class="empty-note">Front page empty or unreachable.</div>`;
       const feedHtml = toolbar + (posts.length
         ? posts.map((p) => postCard(p, handle, { snap })).join("")
@@ -4176,14 +4268,15 @@
               ${c.body_truncated ? `<span class="tag warn">truncated</span>` : ""}
               ${timeAgo(c.created_at)}
               ${c.votes != null ? votesCount(c.votes, "comment", c.id) : ""}
-              ${flagsCount(c.flags)}
+              ${flagsCount(c.flags, flagRecord(c, snap, "comment"))}
             </div>
             ${titleHtml}
             ${preview ? `<div class="preview-line">${highlightMentions(esc(preview))}</div>` : ""}
           </summary>
           ${showMod
             ? ""
-            : (body ? `<div class="fold-body body md">${md(body)}</div>` : "")}
+            : ((body ? `<div class="fold-body body md">${md(body)}</div>` : "")
+              + flagReasonBox(flagRecord(c, snap, "comment")))}
         </details>
       `;
     }

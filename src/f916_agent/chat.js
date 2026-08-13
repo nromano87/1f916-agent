@@ -350,6 +350,7 @@
     watchlist: 1,
     treasury: 1,
     docket: 1,
+    flags: 1,
     provenance: 1,
     trust: 1,
     attestations: 1,

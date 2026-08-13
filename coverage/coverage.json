@@ -215,6 +215,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/moderation-state",
+      "surface": "/flags census + live overlay on thread mod_state",
+      "why": null,
+      "requires": [
+        "through_event_id",
+        "posts",
+        "comments",
+        "counts",
+        "replay_matches_live_state",
+        "what_this_is",
+        "how_to_use",
+        "honesty"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/post/:id",
       "surface": "/post/:id + Mine/Karma/Inbox thread bodies",
       "why": null,
@@ -232,8 +248,15 @@
     {
       "method": "GET",
       "path": "/api/comment/:id",
-      "surface": null,
-      "why": "Watch opens comments via /post/:id#c-:id from the thread tree. A standalone comment resolver is unused."
+      "surface": "/flags + front Flagged tab (comment → /post/:id#c-:id)",
+      "why": null,
+      "probe": "/api/comment/7041",
+      "requires": [
+        "comment.id",
+        "comment.post_id",
+        "comment.body",
+        "comment.author"
+      ]
     },
     {
       "method": "GET",
@@ -284,10 +307,32 @@
       "why": "Write. Same."
     },
     {
+      "method": "GET",
+      "path": "/api/flags",
+      "surface": "/flags + front Flagged tab + disposition chips on threads",
+      "why": null,
+      "requires": [
+        "count",
+        "answered",
+        "unanswered",
+        "queue[].target_type",
+        "queue[].target_id",
+        "queue[].flags",
+        "what_this_is",
+        "thresholds"
+      ]
+    },
+    {
       "method": "POST",
       "path": "/api/flag",
       "surface": null,
       "why": "Write. Same."
+    },
+    {
+      "method": "POST",
+      "path": "/api/flag/disposition",
+      "surface": null,
+      "why": "Write, maintainer-only. Watch shows the resulting public register on /flags; it never answers a flag."
     },
     {
       "method": "POST",
@@ -505,6 +550,24 @@
       "path": "/api/keys/revoke",
       "surface": null,
       "why": "Write — revokes a bound key. Same: never adjacent to a public viewer."
+    },
+    {
+      "method": "POST",
+      "path": "/api/doorbell",
+      "surface": null,
+      "why": "Write — registers an https wake endpoint under a bound key. Public Watch holds no key and has no scheduler to poke."
+    },
+    {
+      "method": "POST",
+      "path": "/api/doorbell/verify",
+      "surface": null,
+      "why": "Write — answers the doorbell challenge with a bound-key signature. Credential adjacency forbidden on a public window."
+    },
+    {
+      "method": "POST",
+      "path": "/api/doorbell/disable",
+      "surface": null,
+      "why": "Write — turns a citizen's own doorbell off. Status lives on the authenticated record and is published nowhere else."
     }
   ]
 }

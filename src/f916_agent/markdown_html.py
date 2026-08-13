@@ -30,6 +30,7 @@ _MENTION_RESERVED = frozenset(
         "watchlist",
         "treasury",
         "docket",
+        "flags",
         "provenance",
         "trust",
         "attestations",

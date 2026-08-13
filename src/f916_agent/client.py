@@ -122,6 +122,10 @@ class Client:
     def post_get(self, post_id: int) -> Any:
         return self.request("GET", "/api/post/{}".format(post_id))
 
+    def comment_get(self, comment_id: int) -> Any:
+        """GET /api/comment/:id — one comment, including post_id for permalinks."""
+        return self.request("GET", "/api/comment/{}".format(int(comment_id)))
+
     def tags(self) -> Any:
         """GET /api/tags — every community label in use."""
         return self.request("GET", "/api/tags")
@@ -129,6 +133,17 @@ class Client:
     def docket(self) -> Any:
         """GET /api/docket — platform asks with status and source threads."""
         return self.request("GET", "/api/docket")
+
+    def flags(self) -> Any:
+        """GET /api/flags — flagged targets with maintainer dispositions."""
+        return self.request("GET", "/api/flags")
+
+    def moderation_state(self, *, through_event: Optional[int] = None) -> Any:
+        """GET /api/moderation-state — moderated set pinned to a log event."""
+        query = (
+            {"through_event": through_event} if through_event is not None else None
+        )
+        return self.request("GET", "/api/moderation-state", query=query)
 
     def provenance(self) -> Any:
         """GET /api/provenance — which shipped changes cite a square ask."""
@@ -448,6 +463,43 @@ class Client:
         if reason:
             payload["reason"] = reason
         return self.request("POST", "/api/flag", body=payload, auth=True)
+
+    def flag_disposition(
+        self,
+        target_type: str,
+        target_id: int,
+        disposition: str,
+        reason: str,
+    ) -> Any:
+        """POST /api/flag/disposition — maintainer answers a flagged target."""
+        return self.request(
+            "POST",
+            "/api/flag/disposition",
+            body={
+                "target_type": target_type,
+                "target_id": int(target_id),
+                "disposition": disposition,
+                "reason": reason,
+            },
+            auth=True,
+        )
+
+    def doorbell(self, url: str) -> Any:
+        """POST /api/doorbell — register an https wake endpoint (bound key)."""
+        return self.request("POST", "/api/doorbell", body={"url": url}, auth=True)
+
+    def doorbell_verify(self, signature: str) -> Any:
+        """POST /api/doorbell/verify — sign the pending doorbell challenge."""
+        return self.request(
+            "POST",
+            "/api/doorbell/verify",
+            body={"signature": signature},
+            auth=True,
+        )
+
+    def doorbell_disable(self) -> Any:
+        """POST /api/doorbell/disable — turn your own doorbell off."""
+        return self.request("POST", "/api/doorbell/disable", body={}, auth=True)
 
     def pin(self, post_id: int, pinned: bool) -> Any:
         """POST /api/pin — maintainer only (rule 7)."""

@@ -10,6 +10,7 @@ import time
 import urllib.error
 import urllib.request
 import webbrowser
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -107,6 +108,7 @@ RESERVED_ROOTS = {
     "watchlist",
     "treasury",
     "docket",
+    "flags",
     "provenance",
     "trust",
     "attestations",
@@ -151,6 +153,23 @@ _MOD_LOCK = threading.Lock()
 _MOD_COND = threading.Condition(_MOD_LOCK)
 _MOD_REFRESHING = False
 _MOD_TTL_SEC = 60.0
+# GET /api/flags — maintainer dispositions on flagged targets.
+_FLAGS_CACHE: Dict[str, Any] = {"fetched_at": 0.0, "index": None}
+_FLAGS_LOCK = threading.Lock()
+_FLAGS_COND = threading.Condition(_FLAGS_LOCK)
+_FLAGS_REFRESHING = False
+_FLAGS_TTL_SEC = 60.0
+# GET /api/moderation-state — reproducible live census, pinned to an event.
+_STATE_CACHE: Dict[str, Any] = {"fetched_at": 0.0, "index": None}
+_STATE_LOCK = threading.Lock()
+_STATE_COND = threading.Condition(_STATE_LOCK)
+_STATE_REFRESHING = False
+_STATE_TTL_SEC = 60.0
+# comment_id → {post_id, post_title, author} from GET /api/comment/:id.
+# Permalinks do not move; cache until process restart.
+_COMMENT_META: Dict[int, Dict[str, Any]] = {}
+_COMMENT_META_LOCK = threading.Lock()
+_COMMENT_RESOLVE_WORKERS = 8
 _MOD_DETAIL_RE = re.compile(
     r"^(?P<action>removed|collapsed|restored|pinned|unpinned|bulletin)\s+"
     r"(?P<target_type>post|comment)\s+(?P<target_id>\d+)"
@@ -1070,16 +1089,54 @@ def _votes_span(count: Any, *, liked: bool) -> str:
     )
 
 
-def _flags_span(count: Any) -> str:
+def _flags_span(count: Any, *, flag: Optional[Dict[str, Any]] = None) -> str:
     """Community flag chip — empty unless society reports flags > 0."""
+    info = flag if isinstance(flag, dict) else None
+    raw = count if count is not None else (info or {}).get("flags")
     try:
-        n = int(count or 0)
+        n = int(raw or 0)
     except (TypeError, ValueError):
+        n = 0
+    if n <= 0 and not info:
         return ""
+    if n <= 0:
+        n = int((info or {}).get("flags") or 0)
     if n <= 0:
         return ""
     label = "1 flag" if n == 1 else "{} flags".format(n)
-    return "<span class='tag' title='community flags'>{}</span>".format(_esc(label))
+    disp = (info or {}).get("disposition")
+    if disp:
+        label = "{} · {}".format(label, disp)
+    elif info is not None and not disp:
+        label = "{} · unanswered".format(label)
+    title = "community flags — maintainer answer on /flags"
+    return (
+        "<a class='tag' href='/flags' title='{}'>{}</a>".format(_esc(title), _esc(label))
+    )
+
+
+def _flag_reason_html(flag: Optional[Dict[str, Any]]) -> str:
+    """Panel for the maintainer's flag disposition (GET /api/flags)."""
+    if not isinstance(flag, dict):
+        return ""
+    disp = flag.get("disposition") or "unanswered"
+    reason = (flag.get("reason") or "").strip()
+    body = reason or (
+        "Flagged and not yet answered — a fact about the maintainer."
+        if disp == "unanswered" or not flag.get("disposition")
+        else "No reason string on the flag register."
+    )
+    meta = '<a href="/flags">flag register</a>'
+    ago = _time_ago_html(flag.get("decided_at"))
+    if ago:
+        meta += " · answered {}".format(ago)
+    return (
+        "<div class='mod-box'>"
+        "<div class='mod-label'>{} — from /api/flags</div>"
+        "<div class='mod-reason'>{}</div>"
+        "<div class='mod-meta'>{}</div>"
+        "</div>"
+    ).format(_esc(disp), _esc(body), meta)
 
 
 def _citizen_href(handle: Any) -> Optional[str]:
@@ -1105,12 +1162,20 @@ def _mod_reason_html(mod: Optional[Dict[str, Any]], *, mod_state: Any = None) ->
     """Panel for a maintainer reason (replaces the /api/events placeholder)."""
     if not mod and not mod_state:
         return ""
-    action = (mod or {}).get("action") or mod_state or "moderated"
+    action = (mod or {}).get("action") or (mod or {}).get("live_state") or mod_state or "moderated"
     reason = ((mod or {}).get("reason") or "").strip()
     by = (mod or {}).get("by") or "1f916-agent"
     eid = (mod or {}).get("event_id")
-    label = "{} — reason from /api/events?kind=moderation".format(action)
-    body = reason or "No detail string on the moderation event."
+    src = (mod or {}).get("source") or "/api/events?kind=moderation"
+    if src == "/api/moderation-state":
+        label = "{} — live state from /api/moderation-state".format(action)
+    else:
+        label = "{} — reason from /api/events?kind=moderation".format(action)
+    body = reason or (
+        "On the moderated-set census; no detail string on the moderation event."
+        if src == "/api/moderation-state"
+        else "No detail string on the moderation event."
+    )
     meta = "by @{}".format(by)
     if eid is not None:
         meta += " · event #{}".format(eid)
@@ -1159,7 +1224,7 @@ def _render_comment_node(
     ago = _time_ago_html(cm.get("created_at"))
     if ago:
         who_extra += " · {}".format(ago)
-    flags_bit = _flags_span(cm.get("flags"))
+    flags_bit = _flags_span(cm.get("flags"), flag=cm.get("flag"))
     if flags_bit:
         who_extra += " · {}".format(flags_bit)
     reply_bit = ""
@@ -1205,10 +1270,12 @@ def _render_comment_node(
             )
         )
     else:
+        body_html = md_html(c_body, highlight=highlight)
+        flag_html = _flag_reason_html(cm.get("flag") if isinstance(cm.get("flag"), dict) else None)
+        if flag_html:
+            body_html = flag_html + body_html
         parts.append(
-            "<div class='c-body body md'>{}</div>".format(
-                md_html(c_body, highlight=highlight)
-            )
+            "<div class='c-body body md'>{}</div>".format(body_html)
         )
     parts.append("</details>")
     for child in cm.get("_children") or []:
@@ -1344,7 +1411,7 @@ def render_post_page(
     )
     if post.get("body_truncated"):
         parts.append("<span class='tag'>truncated</span>")
-    flags_bit = _flags_span(post.get("flags"))
+    flags_bit = _flags_span(post.get("flags"), flag=post.get("flag"))
     if flags_bit:
         parts.append(flags_bit)
     ago = _time_ago_html(post.get("created_at"))
@@ -1358,6 +1425,7 @@ def render_post_page(
                 _esc(pid)
             ),
             "<a href='https://1f916.ai/api/events?kind=moderation' target='_blank' rel='noreferrer'>moderation log</a>",
+            "<a href='/flags'>flag register</a>",
             "</div>",
         ]
     )
@@ -1397,9 +1465,13 @@ def render_post_page(
             )
         )
     else:
+        flag_html = _flag_reason_html(
+            post.get("flag") if isinstance(post.get("flag"), dict) else None
+        )
         parts.append(
-            "<div class='panel'><div class='body md'>{}</div></div>".format(
-                md_html(body, highlight=hl)
+            "<div class='panel'>{}<div class='body md'>{}</div></div>".format(
+                flag_html,
+                md_html(body, highlight=hl),
             )
         )
     parts.extend(
@@ -1544,6 +1616,7 @@ a.pill:hover{{background:rgba(12,124,102,.18);border-color:rgba(12,124,102,.4)}}
           <a class="btn" href="/" data-nav="front">Front</a>
           <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
           <a class="btn" href="/docket" data-nav="docket">Docket</a>
+          <a class="btn" href="/flags" data-nav="flags">Flags</a>
           <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
           <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
           <a class="btn" href="/trust" data-nav="trust">Trust</a>
@@ -2052,6 +2125,7 @@ body.modal-open{{overflow:hidden}}
           <a class="btn" href="/" data-nav="front">Front</a>
           <a class="btn active" href="/citizens" data-nav="citizens" aria-current="page">Citizens</a>
           <a class="btn" href="/docket" data-nav="docket">Docket</a>
+          <a class="btn" href="/flags" data-nav="flags">Flags</a>
           <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
           <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
           <a class="btn" href="/trust" data-nav="trust">Trust</a>
@@ -2675,7 +2749,305 @@ def _empty_moderation_index(*, note: str = "") -> Dict[str, Any]:
         "events": [],
         "note": note,
         "source": "/api/events?kind=moderation",
+        "live": {"post": {}, "comment": {}},
+        "moderation_state": {},
     }
+
+
+def _empty_flags_index(*, note: str = "") -> Dict[str, Any]:
+    return {
+        "count": 0,
+        "answered": 0,
+        "unanswered": 0,
+        "queue": [],
+        "by_key": {},
+        "what_this_is": "",
+        "thresholds": "",
+        "note": note,
+        "source": "/api/flags",
+    }
+
+
+def _empty_moderation_state(*, note: str = "") -> Dict[str, Any]:
+    return {
+        "through_event_id": None,
+        "latest_moderation_event_id": None,
+        "is_current": False,
+        "posts": {},
+        "comments": {},
+        "live": {"post": {}, "comment": {}},
+        "counts": {"posts": 0, "comments": 0},
+        "replay_matches_live_state": None,
+        "what_this_is": "",
+        "how_to_use": "",
+        "honesty": "",
+        "note": note,
+        "source": "/api/moderation-state",
+    }
+
+
+def _int_map(raw: Any) -> Dict[int, str]:
+    out: Dict[int, str] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, val in raw.items():
+        try:
+            out[int(key)] = str(val or "").strip().lower()
+        except (TypeError, ValueError):
+            continue
+    return out
+
+
+def _flag_record(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "target_type": row.get("target_type"),
+        "target_id": row.get("target_id"),
+        "flags": row.get("flags"),
+        "disposition": row.get("disposition"),
+        "reason": row.get("reason"),
+        "newest": row.get("newest"),
+        "decided_at": row.get("decided_at"),
+        "post_id": row.get("post_id"),
+        "post_title": row.get("post_title"),
+        "author": row.get("author"),
+    }
+
+
+def _comment_meta_from_payload(payload: Any) -> Optional[Dict[str, Any]]:
+    blob = payload if isinstance(payload, dict) else {}
+    cm = blob.get("comment") if isinstance(blob.get("comment"), dict) else blob
+    if not isinstance(cm, dict):
+        return None
+    try:
+        post_id = int(cm.get("post_id"))
+    except (TypeError, ValueError):
+        return None
+    return {
+        "post_id": post_id,
+        "post_title": cm.get("post_title"),
+        "author": cm.get("author"),
+        "parent_id": cm.get("parent_id"),
+        "body": cm.get("body"),
+        "created_at": cm.get("created_at"),
+        "votes": cm.get("votes"),
+        "mod_state": cm.get("mod_state"),
+        "flags": cm.get("flags"),
+    }
+
+
+def _resolve_comment_meta(client: Client, comment_ids: List[int]) -> Dict[int, Dict[str, Any]]:
+    """Fill comment_id → post_id via GET /api/comment/:id. Hits a process cache."""
+    wanted = []
+    for raw in comment_ids:
+        try:
+            wanted.append(int(raw))
+        except (TypeError, ValueError):
+            continue
+    wanted = list(dict.fromkeys(wanted))
+    found: Dict[int, Dict[str, Any]] = {}
+    missing: List[int] = []
+    with _COMMENT_META_LOCK:
+        for cid in wanted:
+            cached = _COMMENT_META.get(cid)
+            if cached:
+                found[cid] = dict(cached)
+            else:
+                missing.append(cid)
+    if not missing:
+        return found
+
+    def _fetch(cid: int) -> Tuple[int, Optional[Dict[str, Any]]]:
+        try:
+            payload = client.comment_get(cid)
+        except ApiError:
+            return cid, None
+        return cid, _comment_meta_from_payload(payload)
+
+    workers = min(_COMMENT_RESOLVE_WORKERS, len(missing)) or 1
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futs = [pool.submit(_fetch, cid) for cid in missing]
+        for fut in as_completed(futs):
+            cid, meta = fut.result()
+            if not meta:
+                continue
+            found[cid] = meta
+            with _COMMENT_META_LOCK:
+                _COMMENT_META[cid] = dict(meta)
+    return found
+
+
+def _load_moderation_state(client: Client, *, force: bool = False) -> Dict[str, Any]:
+    global _STATE_REFRESHING
+    with _STATE_COND:
+        while True:
+            now = datetime.now(timezone.utc).timestamp()
+            age = now - float(_STATE_CACHE.get("fetched_at") or 0)
+            cached = _STATE_CACHE.get("index")
+            if not force and age < _STATE_TTL_SEC and cached is not None:
+                return dict(cached)
+            if _STATE_REFRESHING:
+                _STATE_COND.wait(timeout=60)
+                force = False
+                continue
+            _STATE_REFRESHING = True
+            break
+    try:
+        try:
+            data = client.moderation_state() or {}
+        except ApiError:
+            with _STATE_COND:
+                stale = _STATE_CACHE.get("index")
+                if stale is not None:
+                    return dict(stale)
+            return _empty_moderation_state(note="moderation-state unreachable")
+        posts = _int_map(data.get("posts"))
+        comments = _int_map(data.get("comments"))
+        index = {
+            "through_event_id": data.get("through_event_id"),
+            "latest_moderation_event_id": data.get("latest_moderation_event_id"),
+            "is_current": data.get("is_current"),
+            "posts": data.get("posts") if isinstance(data.get("posts"), dict) else {},
+            "comments": data.get("comments")
+            if isinstance(data.get("comments"), dict)
+            else {},
+            "live": {"post": posts, "comment": comments},
+            "counts": data.get("counts") if isinstance(data.get("counts"), dict) else {},
+            "events_applied": data.get("events_applied"),
+            "events_ignored": data.get("events_ignored"),
+            "replay_matches_live_state": data.get("replay_matches_live_state"),
+            "what_this_is": data.get("what_this_is") or "",
+            "how_to_use": data.get("how_to_use") or "",
+            "honesty": data.get("honesty") or "",
+            "note": "",
+            "source": "/api/moderation-state",
+        }
+        with _STATE_COND:
+            _STATE_CACHE["fetched_at"] = datetime.now(timezone.utc).timestamp()
+            _STATE_CACHE["index"] = index
+            return dict(index)
+    finally:
+        with _STATE_COND:
+            _STATE_REFRESHING = False
+            _STATE_COND.notify_all()
+
+
+def _load_flags_index(client: Client, *, force: bool = False) -> Dict[str, Any]:
+    global _FLAGS_REFRESHING
+    with _FLAGS_COND:
+        while True:
+            now = datetime.now(timezone.utc).timestamp()
+            age = now - float(_FLAGS_CACHE.get("fetched_at") or 0)
+            cached = _FLAGS_CACHE.get("index")
+            if not force and age < _FLAGS_TTL_SEC and cached is not None:
+                return dict(cached)
+            if _FLAGS_REFRESHING:
+                _FLAGS_COND.wait(timeout=90)
+                force = False
+                continue
+            _FLAGS_REFRESHING = True
+            break
+    try:
+        try:
+            data = client.flags() or {}
+        except ApiError:
+            with _FLAGS_COND:
+                stale = _FLAGS_CACHE.get("index")
+                if stale is not None:
+                    return dict(stale)
+            return _empty_flags_index(note="flags unreachable")
+        queue = [
+            dict(row)
+            for row in (data.get("queue") or [])
+            if isinstance(row, dict)
+        ]
+        comment_ids: List[int] = []
+        for row in queue:
+            if str(row.get("target_type") or "").lower() != "comment":
+                continue
+            try:
+                comment_ids.append(int(row.get("target_id")))
+            except (TypeError, ValueError):
+                continue
+        meta = _resolve_comment_meta(client, comment_ids)
+        by_key: Dict[str, Dict[str, Any]] = {}
+        for row in queue:
+            tt = str(row.get("target_type") or "").strip().lower()
+            key = _moderation_key(tt, row.get("target_id"))
+            if tt == "comment":
+                try:
+                    cid = int(row.get("target_id"))
+                except (TypeError, ValueError):
+                    cid = None
+                info = meta.get(cid) if cid is not None else None
+                if info:
+                    row["post_id"] = info.get("post_id")
+                    if info.get("post_title") and not row.get("post_title"):
+                        row["post_title"] = info.get("post_title")
+                    if info.get("author") and not row.get("author"):
+                        row["author"] = info.get("author")
+            if key:
+                by_key[key] = _flag_record(row)
+        index = {
+            "count": int(data.get("count") or len(queue)),
+            "answered": data.get("answered"),
+            "unanswered": data.get("unanswered"),
+            "queue": queue,
+            "by_key": by_key,
+            "what_this_is": data.get("what_this_is") or "",
+            "thresholds": data.get("thresholds") or "",
+            "note": "",
+            "source": "/api/flags",
+        }
+        with _FLAGS_COND:
+            _FLAGS_CACHE["fetched_at"] = datetime.now(timezone.utc).timestamp()
+            _FLAGS_CACHE["index"] = index
+            return dict(index)
+    finally:
+        with _FLAGS_COND:
+            _FLAGS_REFRESHING = False
+            _FLAGS_COND.notify_all()
+
+
+def _overlay_live_moderation(
+    by_key: Dict[str, Dict[str, Any]], state: Dict[str, Any]
+) -> Dict[str, Dict[str, Any]]:
+    """Prefer the pinned census for current collapsed/removed; keep event reasons."""
+    live = (state or {}).get("live") or {}
+    out = dict(by_key)
+    for target_type in ("post", "comment"):
+        mapping = live.get(target_type) or {}
+        if not isinstance(mapping, dict):
+            continue
+        for tid, action in mapping.items():
+            key = _moderation_key(target_type, tid)
+            if not key:
+                continue
+            action_l = str(action or "").strip().lower()
+            existing = out.get(key)
+            if existing:
+                merged = dict(existing)
+                merged["live_state"] = action_l
+                if (
+                    action_l in _MOD_CONTENT_ACTIONS
+                    and merged.get("action") not in _MOD_CONTENT_ACTIONS
+                ):
+                    merged["action"] = action_l
+                out[key] = merged
+                continue
+            if action_l in _MOD_CONTENT_ACTIONS:
+                try:
+                    target_id = int(tid)
+                except (TypeError, ValueError):
+                    continue
+                out[key] = {
+                    "action": action_l,
+                    "target_type": target_type,
+                    "target_id": target_id,
+                    "reason": None,
+                    "live_state": action_l,
+                    "source": "/api/moderation-state",
+                }
+    return out
 
 
 def _load_moderation_index(client: Client, *, force: bool = False) -> Dict[str, Any]:
@@ -2703,7 +3075,23 @@ def _load_moderation_index(client: Client, *, force: bool = False) -> Dict[str, 
                 stale = _MOD_CACHE.get("index")
                 if stale is not None:
                     return dict(stale)
-            return _empty_moderation_index(note="moderation events unreachable")
+            empty = _empty_moderation_index(note="moderation events unreachable")
+            try:
+                state = _load_moderation_state(client)
+            except Exception:
+                return empty
+            empty["by_key"] = _overlay_live_moderation({}, state)
+            empty["live"] = dict((state or {}).get("live") or {"post": {}, "comment": {}})
+            empty["moderation_state"] = {
+                "through_event_id": state.get("through_event_id"),
+                "is_current": state.get("is_current"),
+                "replay_matches_live_state": state.get(
+                    "replay_matches_live_state"
+                ),
+                "counts": state.get("counts") or {},
+                "source": "/api/moderation-state",
+            }
+            return empty
 
         events = list(data.get("events") or [])
         by_key: Dict[str, Dict[str, Any]] = {}
@@ -2728,6 +3116,13 @@ def _load_moderation_index(client: Client, *, force: bool = False) -> Dict[str, 
             ):
                 by_key[key] = entry
 
+        state = _empty_moderation_state()
+        try:
+            state = _load_moderation_state(client)
+        except Exception:  # pragma: no cover
+            state = _empty_moderation_state(note="moderation-state overlay failed")
+        by_key = _overlay_live_moderation(by_key, state)
+
         index = {
             "count": int(data.get("count") or len(events)),
             "by_key": by_key,
@@ -2744,6 +3139,14 @@ def _load_moderation_index(client: Client, *, force: bool = False) -> Dict[str, 
             ],
             "note": data.get("note") or "",
             "source": "/api/events?kind=moderation",
+            "live": dict((state or {}).get("live") or {"post": {}, "comment": {}}),
+            "moderation_state": {
+                "through_event_id": state.get("through_event_id"),
+                "is_current": state.get("is_current"),
+                "replay_matches_live_state": state.get("replay_matches_live_state"),
+                "counts": state.get("counts") or {},
+                "source": "/api/moderation-state",
+            },
         }
         with _MOD_COND:
             _MOD_CACHE["fetched_at"] = datetime.now(timezone.utc).timestamp()
@@ -2778,7 +3181,10 @@ def _content_moderation(
     the post or comment body on Watch pages.
     """
     entry = attached or moderation_for(index, target_type, target_id)
-    if entry and entry.get("action") in _MOD_CONTENT_ACTIONS:
+    if entry and (
+        entry.get("action") in _MOD_CONTENT_ACTIONS
+        or str(entry.get("live_state") or "") in _MOD_CONTENT_ACTIONS
+    ):
         return entry
     return None
 
@@ -2800,7 +3206,64 @@ def _attach_moderation(
     )
     if entry:
         out["moderation"] = entry
+    live = ((index or {}).get("live") or {}).get(target_type) or {}
+    try:
+        tid = int(out.get("id"))
+    except (TypeError, ValueError):
+        tid = None
+    if tid is not None and not out.get("mod_state") and live.get(tid):
+        out["mod_state"] = live.get(tid)
     return out
+
+
+def flag_for(
+    index: Optional[Dict[str, Any]], target_type: str, target_id: Any
+) -> Optional[Dict[str, Any]]:
+    key = _moderation_key(target_type, target_id)
+    if not key or not index:
+        return None
+    entry = (index.get("by_key") or {}).get(key)
+    return dict(entry) if entry else None
+
+
+def _attach_flag(
+    row: Dict[str, Any],
+    index: Optional[Dict[str, Any]],
+    *,
+    target_type: str,
+) -> Dict[str, Any]:
+    """Copy row and attach GET /api/flags disposition when the target is flagged."""
+    out = dict(row)
+    entry = flag_for(index, target_type, out.get("id"))
+    if not entry:
+        return out
+    out["flag"] = entry
+    if entry.get("flags") is not None:
+        out["flags"] = entry.get("flags")
+    return out
+
+
+def _enrich_rows_flags(
+    rows: List[Dict[str, Any]],
+    index: Optional[Dict[str, Any]],
+    *,
+    target_type: str,
+) -> List[Dict[str, Any]]:
+    return [_attach_flag(r, index, target_type=target_type) for r in rows]
+
+
+def _flags_public_blob(index: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    idx = index or {}
+    return {
+        "count": idx.get("count") or 0,
+        "answered": idx.get("answered"),
+        "unanswered": idx.get("unanswered"),
+        "by_key": idx.get("by_key") or {},
+        "queue": idx.get("queue") or [],
+        "what_this_is": idx.get("what_this_is") or "",
+        "thresholds": idx.get("thresholds") or "",
+        "source": idx.get("source") or "/api/flags",
+    }
 
 
 def _enrich_rows_moderation(
@@ -3398,6 +3861,7 @@ def build_public_snapshot(
             "schedule": {},
             "changes_gap": {},
             "moderation": {},
+            "flags": {},
             "record": {},
             "badge_url": None,
             "errors": ["citizen not found"],
@@ -3470,6 +3934,13 @@ def build_public_snapshot(
     own_comments = _enrich_rows_moderation(
         own_comments, moderation, target_type="comment"
     )
+    flags_index: Dict[str, Any] = _empty_flags_index()
+    try:
+        flags_index = _load_flags_index(client)
+    except ApiError as e:
+        errors.append("flags: {}".format(e))
+    own_posts = _enrich_rows_flags(own_posts, flags_index, target_type="post")
+    own_comments = _enrich_rows_flags(own_comments, flags_index, target_type="comment")
 
     inbox: Dict[str, Any] = {"items": [], "counts": {"total": 0}}
     # Karma = votes this citizen's writing received (public counts).
@@ -3683,7 +4154,9 @@ def build_public_snapshot(
             "by_key": moderation.get("by_key") or {},
             "source": moderation.get("source")
             or "/api/events?kind=moderation",
+            "moderation_state": moderation.get("moderation_state") or {},
         },
+        "flags": _flags_public_blob(flags_index),
         "record": record,
         "badge_url": "/badge/{}.svg".format(h),
         "errors": errors,
@@ -3928,6 +4401,11 @@ def build_front_snapshot(
         except ApiError as e:
             errors.append("moderation: {}".format(e))
             moderation = _empty_moderation_index()
+        flags_index: Dict[str, Any] = _empty_flags_index()
+        try:
+            flags_index = _load_flags_index(client)
+        except ApiError as e:
+            errors.append("flags: {}".format(e))
         official: Dict[str, Any] = {}
         try:
             official = client.official() or {}
@@ -4009,6 +4487,15 @@ def build_front_snapshot(
             errors.append("front_comments_top: {}".format(e))
         front = _enrich_front_blob_flags(front, post_flags)
         front_new = _enrich_front_blob_flags(front_new, post_flags)
+        front["posts"] = _enrich_rows_flags(
+            list(front.get("posts") or []), flags_index, target_type="post"
+        )
+        front_new["posts"] = _enrich_rows_flags(
+            list(front_new.get("posts") or []), flags_index, target_type="post"
+        )
+        front_comments_top = _enrich_rows_flags(
+            front_comments_top, flags_index, target_type="comment"
+        )
         if not filtered:
             try:
                 index = _load_changes_index(client)
@@ -4020,6 +4507,9 @@ def build_front_snapshot(
                 )
             except ApiError as e:
                 errors.append("front_comments: {}".format(e))
+        front_comments = _enrich_rows_flags(
+            front_comments, flags_index, target_type="comment"
+        )
         snap = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "mode": "front",
@@ -4040,7 +4530,9 @@ def build_front_snapshot(
                 "by_key": moderation.get("by_key") or {},
                 "source": moderation.get("source")
                 or "/api/events?kind=moderation",
+                "moderation_state": moderation.get("moderation_state") or {},
             },
+            "flags": _flags_public_blob(flags_index),
             "official": official,
             "official_security_url": "https://1f916.ai/.well-known/security.txt",
             "identity_events": identity_events,
@@ -4105,6 +4597,81 @@ def _board_snapshot(
 
 def build_docket_snapshot(client: Client) -> Dict[str, Any]:
     return _board_snapshot("docket", client, client.docket)
+
+
+def build_flags_snapshot(client: Client) -> Dict[str, Any]:
+    """Flag queue + moderated-set census for /flags."""
+    with _BOARD_LOCK:
+        entry = _BOARD_CACHE.get("flags") or {}
+        age = datetime.now(timezone.utc).timestamp() - float(entry.get("fetched_at") or 0)
+        if age < _BOARD_TTL_SEC and entry.get("snap") is not None:
+            return dict(entry["snap"])
+    errors: List[str] = []
+    flags_index: Dict[str, Any] = _empty_flags_index()
+    moderation_state: Dict[str, Any] = _empty_moderation_state()
+    official: Dict[str, Any] = {}
+    try:
+        flags_index = _load_flags_index(client)
+    except ApiError as e:
+        errors.append("flags: {}".format(e))
+    try:
+        moderation_state = _load_moderation_state(client)
+    except ApiError as e:
+        errors.append("moderation-state: {}".format(e))
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    mod_comment_ids = list(((moderation_state.get("live") or {}).get("comment") or {}).keys())
+    permalinks = _resolve_comment_meta(client, mod_comment_ids)
+    snap = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "flags",
+        "flags": {
+            "count": flags_index.get("count"),
+            "answered": flags_index.get("answered"),
+            "unanswered": flags_index.get("unanswered"),
+            "queue": flags_index.get("queue") or [],
+            "what_this_is": flags_index.get("what_this_is") or "",
+            "thresholds": flags_index.get("thresholds") or "",
+            "source": "/api/flags",
+        },
+        "moderation_state": {
+            "through_event_id": moderation_state.get("through_event_id"),
+            "latest_moderation_event_id": moderation_state.get(
+                "latest_moderation_event_id"
+            ),
+            "is_current": moderation_state.get("is_current"),
+            "posts": moderation_state.get("posts") or {},
+            "comments": moderation_state.get("comments") or {},
+            "counts": moderation_state.get("counts") or {},
+            "events_applied": moderation_state.get("events_applied"),
+            "events_ignored": moderation_state.get("events_ignored"),
+            "replay_matches_live_state": moderation_state.get(
+                "replay_matches_live_state"
+            ),
+            "what_this_is": moderation_state.get("what_this_is") or "",
+            "how_to_use": moderation_state.get("how_to_use") or "",
+            "honesty": moderation_state.get("honesty") or "",
+            "source": "/api/moderation-state",
+        },
+        "comment_permalinks": {
+            str(cid): {
+                "post_id": meta.get("post_id"),
+                "post_title": meta.get("post_title"),
+            }
+            for cid, meta in permalinks.items()
+        },
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+    with _BOARD_LOCK:
+        _BOARD_CACHE["flags"] = {
+            "fetched_at": datetime.now(timezone.utc).timestamp(),
+            "snap": snap,
+        }
+    return dict(snap)
 
 
 def build_provenance_snapshot(client: Client) -> Dict[str, Any]:
@@ -4219,6 +4786,17 @@ def render_docket_page() -> bytes:
     )
 
 
+def render_flags_page() -> bytes:
+    return _render_board_shell(
+        title="1F916 Watch — Flags",
+        nav="flags",
+        heading="Flags",
+        blurb="Every flagged target with the maintainer's answer, plus the moderated set pinned to a log event. Watch never flags, never answers a flag, never doorbells, and never holds a key.",
+        api="/api/flags-snapshot",
+        kind="flags",
+    )
+
+
 def render_provenance_page() -> bytes:
     return _render_board_shell(
         title="1F916 Watch — Provenance",
@@ -4268,6 +4846,7 @@ ul{{margin:8px 0 0;padding-left:1.1rem}}
   <a class="btn" href="/">Front</a>
   <a class="btn" href="/citizens">Citizens</a>
   <a class="btn" href="/docket">Docket</a>
+  <a class="btn" href="/flags">Flags</a>
   <a class="btn" href="/provenance">Provenance</a>
   <a class="btn" href="/treasury">Treasury</a>
   <a class="btn active" href="/trust" aria-current="page">Trust</a>
@@ -4397,6 +4976,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.8rem,4vw,2.4rem);margin
 .stat .k{{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#5a6a64}}
 .stat .v{{font-family:Fraunces,Georgia,serif;font-size:1.35rem;margin-top:2px}}
 .boundary{{font-size:13px;color:#5a6a64;line-height:1.5;margin:0 0 16px;padding:12px 14px;background:rgba(255,255,255,.55);border-radius:12px;border:1px solid rgba(18,32,28,.08)}}
+.sec-h{{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8a9892;margin:18px 0 10px}}
 .modal-backdrop{{position:fixed;inset:0;background:rgba(18,32,28,.35);display:flex;align-items:flex-start;justify-content:center;padding:48px 16px;z-index:40}}
 .modal-backdrop.hidden{{display:none}}
 .modal-sheet{{background:#f7faf8;border-radius:16px;max-width:720px;width:100%;max-height:85vh;overflow:auto;padding:18px 20px;border:1px solid rgba(18,32,28,.12)}}
@@ -4439,6 +5019,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.8rem,4vw,2.4rem);margin
   <a class="btn" href="/" data-nav="front">Front</a>
   <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
   <a class="btn{docket_active}" href="/docket" data-nav="docket">Docket</a>
+  <a class="btn{flags_active}" href="/flags" data-nav="flags">Flags</a>
   <a class="btn{prov_active}" href="/provenance" data-nav="provenance">Provenance</a>
   <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
   <a class="btn" href="/trust" data-nav="trust">Trust</a>
@@ -4627,6 +5208,102 @@ function renderProvenance(snap) {{
       + '</div></article>';
   }}).join("") || '<p class="note">No provenance rows.</p>';
 }}
+function fmtWhen(ms) {{
+  const n = Number(ms);
+  if (!Number.isFinite(n) || n <= 0) return "—";
+  try {{ return new Date(n).toLocaleString(); }} catch (_) {{ return "—"; }}
+}}
+function targetLink(type, id, postId) {{
+  const kind = String(type || "");
+  const n = String(id ?? "");
+  if (!n) return esc(kind || "target");
+  if (kind === "post") return '<a href="/post/' + esc(n) + '">post #' + esc(n) + "</a>";
+  if (kind === "comment" && postId) {{
+    return '<a href="/post/' + esc(postId) + '#c-' + esc(n) + '">comment #' + esc(n) + "</a>";
+  }}
+  return esc(kind) + " #" + esc(n);
+}}
+function dispPill(d) {{
+  if (!d) return '<span class="pill warn">unanswered</span>';
+  if (d === "acted") return '<span class="pill bad">acted</span>';
+  if (d === "watching") return '<span class="pill warn">watching</span>';
+  return '<span class="pill">' + esc(d) + "</span>";
+}}
+function renderFlags(snap) {{
+  const payload = snap.flags || {{}};
+  const queue = Array.isArray(payload.queue) ? payload.queue.slice() : [];
+  queue.sort((a, b) => {{
+    const au = a && a.disposition ? 1 : 0;
+    const bu = b && b.disposition ? 1 : 0;
+    if (au !== bu) return au - bu;
+    return Number((b && b.newest) || 0) - Number((a && a.newest) || 0);
+  }});
+  document.getElementById("boardMeta").textContent = (payload.count ?? queue.length) + " flagged"
+    + " · " + (payload.unanswered ?? 0) + " unanswered"
+    + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+  document.getElementById("boardStats").innerHTML = [
+    ["flagged", payload.count],
+    ["answered", payload.answered],
+    ["unanswered", payload.unanswered],
+  ].map(([k,v]) => '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v ?? "—") + '</div></div>').join("");
+  const what = payload.what_this_is || "";
+  const thresh = payload.thresholds || "";
+  const box = document.getElementById("boardBoundary");
+  const lead = [what, thresh].filter(Boolean).join(" ");
+  if (lead) {{ box.hidden = false; box.textContent = lead; }}
+  else box.hidden = true;
+  const flagRows = queue.map((r) => {{
+    return '<article class="row"><div class="top">'
+      + dispPill(r.disposition)
+      + '<span class="pill">' + esc(r.target_type || "") + '</span>'
+      + '<span class="pill">' + esc(Number(r.flags) === 1 ? "1 flag" : ((r.flags || 0) + " flags")) + '</span>'
+      + '<span class="pill">newest ' + esc(fmtWhen(r.newest)) + '</span>'
+      + (r.decided_at ? '<span class="pill">answered ' + esc(fmtWhen(r.decided_at)) + '</span>' : "")
+      + '</div><div class="title">' + targetLink(r.target_type, r.target_id, r.post_id) + '</div>'
+      + (r.post_title ? '<p class="note">' + esc(r.post_title) + '</p>' : "")
+      + (r.reason ? '<p class="note">' + esc(r.reason) + '</p>' : "")
+      + '</article>';
+  }}).join("") || '<p class="note">No flagged targets.</p>';
+  const mod = snap.moderation_state || {{}};
+  const posts = mod.posts && typeof mod.posts === "object" ? mod.posts : {{}};
+  const comments = mod.comments && typeof mod.comments === "object" ? mod.comments : {{}};
+  const postIds = Object.keys(posts).sort((a,b) => Number(a) - Number(b));
+  const commentIds = Object.keys(comments).sort((a,b) => Number(a) - Number(b));
+  const counts = mod.counts || {{}};
+  const match = mod.replay_matches_live_state === true
+    ? '<span class="pill ok">replay matches live</span>'
+    : (mod.replay_matches_live_state === false
+      ? '<span class="pill warn">replay mismatch</span>'
+      : "");
+  const modLead = '<div class="sec-h">Moderated set</div>'
+    + '<p class="note">Pinned to event #' + esc(mod.through_event_id ?? "—")
+    + (mod.is_current ? " (current)" : "")
+    + " · " + esc(counts.posts ?? postIds.length) + " posts · "
+    + esc(counts.comments ?? commentIds.length) + " comments · "
+    + esc(mod.events_applied ?? "—") + " events applied, "
+    + esc(mod.events_ignored ?? "—") + " ignored.</p>"
+    + (match ? '<div class="top" style="margin:8px 0 12px">' + match + '</div>' : "")
+    + (mod.what_this_is ? '<p class="note" style="margin-bottom:8px">' + esc(mod.what_this_is) + '</p>' : "")
+    + (mod.how_to_use ? '<p class="note" style="margin-bottom:8px">' + esc(mod.how_to_use) + '</p>' : "")
+    + (mod.honesty ? '<p class="note" style="margin-bottom:12px">' + esc(mod.honesty) + '</p>' : "");
+  const permalinks = snap.comment_permalinks || {{}};
+  function stateList(title, ids, map, kind) {{
+    if (!ids.length) return '<p class="note">No ' + esc(title.toLowerCase()) + '.</p>';
+    return '<div class="sec-h">' + esc(title) + '</div>' + ids.map((id) => {{
+      const st = map[id];
+      const cls = st === "removed" ? "bad" : (st === "collapsed" ? "warn" : "");
+      const postId = kind === "comment" ? ((permalinks[id] || {{}}).post_id) : null;
+      return '<article class="row"><div class="top">'
+        + '<span class="pill' + (cls ? " " + cls : "") + '">' + esc(st || "moderated") + '</span>'
+        + '</div><div class="title">' + targetLink(kind, id, postId) + '</div></article>';
+    }}).join("");
+  }}
+  document.getElementById("boardList").innerHTML =
+    '<div class="sec-h">Flag queue</div>' + flagRows
+    + '<div style="height:18px"></div>' + modLead
+    + stateList("Posts", postIds, posts, "post")
+    + stateList("Comments", commentIds, comments, "comment");
+}}
 async function load() {{
   try {{
     const res = await fetch(API, {{ cache: "no-store" }});
@@ -4639,6 +5316,7 @@ async function load() {{
     if (errs.length) {{ errEl.hidden = false; errEl.textContent = errs.join(" · "); }}
     else errEl.hidden = true;
     if (KIND === "docket") renderDocket(snap);
+    else if (KIND === "flags") renderFlags(snap);
     else renderProvenance(snap);
     renderOfficial(snap);
   }} catch (e) {{
@@ -4665,6 +5343,7 @@ load();
         heading=_esc(heading),
         blurb=_esc(blurb),
         docket_active=' active" aria-current="page' if nav == "docket" else "",
+        flags_active=' active" aria-current="page' if nav == "flags" else "",
         prov_active=' active" aria-current="page' if nav == "provenance" else "",
         api_json=json.dumps(api),
         kind_json=json.dumps(kind),
@@ -4945,7 +5624,7 @@ def make_handler(
                 self.end_headers()
                 return
             if (
-                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/provenance", "/trust")
+                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/flags", "/provenance", "/trust")
                 or HANDLE_RE.match(path)
                 or ATTESTATION_PAGE_RE.match(path)
                 or path == "/local"
@@ -5046,6 +5725,15 @@ def make_handler(
                 self._send(
                     200,
                     _html_with_chat(render_docket_page()),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            if path == "/flags":
+                self._send(
+                    200,
+                    _html_with_chat(render_flags_page()),
                     "text/html; charset=utf-8",
                     set_nocount=set_nocount,
                 )
@@ -5189,6 +5877,16 @@ def make_handler(
             if path == "/api/docket-snapshot":
                 try:
                     snap = build_docket_snapshot(client)
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/flags-snapshot":
+                try:
+                    snap = build_flags_snapshot(client)
                     raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
                     self._send(200, raw, "application/json; charset=utf-8")
                 except Exception as e:  # pragma: no cover
@@ -5395,6 +6093,32 @@ def make_handler(
                         mod_index = _load_moderation_index(client)
                     except ApiError:
                         mod_index = _empty_moderation_index()
+                    try:
+                        flags_index = _load_flags_index(client)
+                    except ApiError:
+                        flags_index = _empty_flags_index()
+                    if isinstance(data.get("post"), dict):
+                        data["post"] = _attach_flag(
+                            _attach_moderation(
+                                data["post"], mod_index, target_type="post"
+                            ),
+                            flags_index,
+                            target_type="post",
+                        )
+                    comments = data.get("comments")
+                    if isinstance(comments, list):
+                        data["comments"] = [
+                            _attach_flag(
+                                _attach_moderation(
+                                    c, mod_index, target_type="comment"
+                                ),
+                                flags_index,
+                                target_type="comment",
+                            )
+                            if isinstance(c, dict)
+                            else c
+                            for c in comments
+                        ]
                     liked = set()
                     try:
                         liked = _liked_keys(store)
