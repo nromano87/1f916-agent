@@ -3920,6 +3920,12 @@ def build_public_snapshot(
     own_comments = sorted(
         own_comments, key=lambda c: int(c.get("created_at") or 0), reverse=True
     )
+    own_comments = _enrich_comment_context(
+        own_comments,
+        posts=list(seen_posts.values()) + list(gap.get("omitted_posts") or []),
+        comments=list(index.get("comments") or []),
+        client=client,
+    )
     # /api/changes omits comment counts; tally from the same crawl as a first pass.
     own_posts = _enrich_rows_comments(
         own_posts, _comment_counts_by_post(list(index.get("comments") or []))
@@ -4176,6 +4182,80 @@ def _front_comment_titles(posts: List[Dict[str, Any]]) -> Dict[int, str]:
     return titles
 
 
+def _comment_authors_by_id(comments: List[Dict[str, Any]]) -> Dict[int, str]:
+    authors: Dict[int, str] = {}
+    for c in comments or []:
+        try:
+            cid = int(c.get("id"))
+        except (TypeError, ValueError):
+            continue
+        author = str(c.get("author") or "").strip()
+        if author and cid not in authors:
+            authors[cid] = author
+    return authors
+
+
+def _enrich_comment_context(
+    rows: List[Dict[str, Any]],
+    *,
+    posts: Optional[List[Dict[str, Any]]] = None,
+    comments: Optional[List[Dict[str, Any]]] = None,
+    client: Optional[Client] = None,
+) -> List[Dict[str, Any]]:
+    """Attach post_title and parent_author for comment headlines."""
+    titles = _front_comment_titles(posts or [])
+    authors = _comment_authors_by_id(comments or [])
+    for c in list(comments or []) + list(rows or []):
+        try:
+            pid = int(c.get("post_id"))
+        except (TypeError, ValueError):
+            continue
+        title = str(c.get("post_title") or "").strip()
+        if title and pid not in titles:
+            titles[pid] = title
+
+    missing_parents: List[int] = []
+    for row in rows or []:
+        parent = _norm_parent_id(row.get("parent_id"))
+        if parent is not None and parent not in authors:
+            missing_parents.append(parent)
+
+    if missing_parents and client is not None:
+        meta = _resolve_comment_meta(client, missing_parents)
+        for cid, info in meta.items():
+            author = str(info.get("author") or "").strip()
+            if author:
+                authors[cid] = author
+            title = str(info.get("post_title") or "").strip()
+            try:
+                pid = int(info.get("post_id"))
+            except (TypeError, ValueError):
+                pid = None
+            if title and pid is not None and pid not in titles:
+                titles[pid] = title
+
+    out: List[Dict[str, Any]] = []
+    for row in rows or []:
+        enriched = dict(row)
+        try:
+            pid = int(row.get("post_id"))
+        except (TypeError, ValueError):
+            pid = None
+        if (
+            pid is not None
+            and not str(enriched.get("post_title") or "").strip()
+            and pid in titles
+        ):
+            enriched["post_title"] = titles[pid]
+        parent = _norm_parent_id(row.get("parent_id"))
+        if parent is not None:
+            who = authors.get(parent)
+            if who:
+                enriched["parent_author"] = who
+        out.append(enriched)
+    return out
+
+
 def _front_comments_feed(
     comments: List[Dict[str, Any]],
     posts: List[Dict[str, Any]],
@@ -4209,7 +4289,7 @@ def _front_comments_feed(
         out.append(_attach_moderation(row, moderation, target_type="comment"))
         if len(out) >= limit:
             break
-    return out
+    return _enrich_comment_context(out, posts=posts, comments=comments)
 
 
 def _front_comments_top(
@@ -4261,6 +4341,7 @@ def _front_comments_top(
             vote_map[cid] = votes
             row["votes"] = votes
             rows.append(_attach_moderation(row, moderation, target_type="comment"))
+    rows = _enrich_comment_context(rows, posts=front_posts, comments=rows)
     rows.sort(
         key=lambda c: (
             int(c.get("votes") or 0),

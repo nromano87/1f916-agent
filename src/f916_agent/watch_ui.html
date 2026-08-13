@@ -4229,6 +4229,50 @@
       posts.forEach((p) => applyExpandState(`post-${p.id}`));
     }
 
+    function commentParentAuthor(c, snap = null) {
+      const named = String(c.parent_author || "").trim();
+      if (named) return named;
+      const parentId = c.parent_id;
+      if (parentId == null) return "";
+      const src = snap || lastSnap || {};
+      const pools = [
+        ((src.history || {}).comments) || [],
+        src.front_comments || [],
+        src.front_comments_top || [],
+      ];
+      for (const pool of pools) {
+        const hit = pool.find((x) => Number(x && x.id) === Number(parentId));
+        if (hit && hit.author) return String(hit.author).trim();
+      }
+      return "";
+    }
+
+    function commentPostTitle(c, snap = null) {
+      const titled = String(c.post_title || "").trim();
+      if (titled) return titled;
+      const pid = c.post_id;
+      if (pid == null) return "";
+      const src = snap || lastSnap || {};
+      const posts = [
+        ...(((src.history || {}).posts) || []),
+        ...(((src.front || {}).posts) || []),
+        ...(((src.front_new || {}).posts) || []),
+      ];
+      const hit = posts.find((p) => Number(p && p.id) === Number(pid));
+      return String((hit && (hit.title || hit.post_title)) || "").trim();
+    }
+
+    function commentHeadline(c, snap = null) {
+      const parentId = c.parent_id || null;
+      const title = commentPostTitle(c, snap);
+      const postBit = title ? `#${c.post_id}: ${title}` : `#${c.post_id}`;
+      if (parentId) {
+        const who = commentParentAuthor(c, snap) || `#${parentId}`;
+        return `Reply to ${who} on ${postBit}`;
+      }
+      return `Comment on ${postBit}`;
+    }
+
     function commentCard(c, snap = null, { showAuthor = false } = {}) {
       const key = `comment-${c.id}`;
       const body = (c.body || "").trim();
@@ -4237,11 +4281,7 @@
       const mod = c.moderation || moderationFor(snap || lastSnap, "comment", c.id);
       const showMod = !!(c.mod_state || mod || isModPlaceholder(body));
       const author = c.author || "";
-      const headline = parentId
-        ? `Reply to #${parentId}${c.post_title ? ` · on #${c.post_id}: ${c.post_title}` : ` on #${c.post_id}`}`
-        : (c.post_title
-          ? `On #${c.post_id}: ${c.post_title}`
-          : `Comment on #${c.post_id}`);
+      const headline = commentHeadline(c, snap);
       const href = postHref(c.post_id, { hash: `c-${c.id}` });
       const titleHtml = href
         ? `<a class="title-link" href="${href}"${postLinkAttrs()} title="Open comment #${esc(c.id)}" style="font-size:1.05rem;margin:6px 0 0">${highlightMentions(esc(headline))}</a>`
