@@ -1515,6 +1515,9 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 .remain-card tbody tr:hover a{{color:#0c7c66}}
 .remain-card a{{color:#12201c;font-weight:700;text-decoration:none}}
 .remain-card a:hover{{color:#0c7c66}}
+.remain-card th.sortable{{cursor:pointer;user-select:none;white-space:nowrap}}
+.remain-card th.sortable:hover,.remain-card th.sortable:focus-visible{{color:#0c7c66;outline:none}}
+.remain-card th .sort-mark{{font-size:11px;font-weight:700;letter-spacing:0;text-transform:none}}
 @media (max-width:960px){{
 .site-nav .nav-spacer{{display:none}}
 .nav-toggle{{display:inline-flex;order:3;margin-left:auto;width:40px;height:40px;align-items:center;justify-content:center;border-radius:12px;border:1px solid rgba(18,32,28,.12);background:rgba(255,255,255,.72);cursor:pointer}}
@@ -1626,10 +1629,125 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     return "wl-" + encodeURIComponent(String(handle || ""));
   }}
 
+  const REMAIN_COLS = [
+    {{ key: "citizen", label: "Citizen", num: false }},
+    {{ key: "karma", label: "Karma", num: true }},
+    {{ key: "posts", label: "Posts remaining", num: true }},
+    {{ key: "comments", label: "Comments remaining", num: true }},
+    {{ key: "inbox", label: "New inbox", num: true }},
+  ];
+  const REMAIN_SORT_KEY = "f916-watchlist-sort";
+  function loadRemainSort() {{
+    try {{
+      const raw = sessionStorage.getItem(REMAIN_SORT_KEY);
+      if (!raw) return {{ key: "posts", dir: "desc" }};
+      const parsed = JSON.parse(raw);
+      const key = REMAIN_COLS.some((c) => c.key === parsed.key) ? parsed.key : "posts";
+      const dir = parsed.dir === "asc" ? "asc" : "desc";
+      return {{ key, dir }};
+    }} catch (_) {{
+      return {{ key: "posts", dir: "desc" }};
+    }}
+  }}
+  let remainSort = loadRemainSort();
+  let remainState = null;
+  function saveRemainSort() {{
+    try {{ sessionStorage.setItem(REMAIN_SORT_KEY, JSON.stringify(remainSort)); }} catch (_) {{}}
+  }}
+  function compareRemain(a, b) {{
+    const byKey = remainState.byKey;
+    const unseenByKey = remainState.unseenByKey;
+    const ca = byKey[a.toLowerCase()] || {{}};
+    const cb = byKey[b.toLowerCase()] || {{}};
+    const nameA = String(ca.handle || a);
+    const nameB = String(cb.handle || b);
+    const nameCmp = nameA.localeCompare(nameB, undefined, {{ sensitivity: "base" }});
+    if (remainSort.key === "citizen") return remainSort.dir === "asc" ? nameCmp : -nameCmp;
+    let va = null;
+    let vb = null;
+    if (remainSort.key === "karma") {{
+      va = remainVal(ca.karma);
+      vb = remainVal(cb.karma);
+    }} else if (remainSort.key === "posts") {{
+      va = remainVal(ca.posts_remaining);
+      vb = remainVal(cb.posts_remaining);
+    }} else if (remainSort.key === "comments") {{
+      va = remainVal(ca.comments_remaining);
+      vb = remainVal(cb.comments_remaining);
+    }} else {{
+      va = remainVal(unseenByKey[a.toLowerCase()] || 0);
+      vb = remainVal(unseenByKey[b.toLowerCase()] || 0);
+    }}
+    const na = va == null ? -1 : va;
+    const nb = vb == null ? -1 : vb;
+    if (na !== nb) return remainSort.dir === "asc" ? na - nb : nb - na;
+    return nameCmp;
+  }}
+  function setRemainSort(key) {{
+    if (remainSort.key === key) {{
+      remainSort = {{ key, dir: remainSort.dir === "desc" ? "asc" : "desc" }};
+    }} else {{
+      remainSort = {{ key, dir: key === "citizen" ? "asc" : "desc" }};
+    }}
+    saveRemainSort();
+    renderRemainTable();
+  }}
+  function renderRemainTable() {{
+    const remainEl = document.getElementById("remain");
+    if (!remainEl) return;
+    if (!remainState || !remainState.handles.length) {{
+      remainEl.innerHTML = "";
+      return;
+    }}
+    const handles = remainState.handles;
+    const byKey = remainState.byKey;
+    const unseenByKey = remainState.unseenByKey;
+    const remainHandles = handles.slice().sort(compareRemain);
+    const remainRows = remainHandles.map((h) => {{
+      const c = byKey[h.toLowerCase()] || {{ handle: h }};
+      const name = c.handle || h;
+      const id = cardId(name);
+      const unseen = unseenByKey[h.toLowerCase()] || 0;
+      return '<tr data-card="' + esc(id) + '"><td><a href="#' + esc(id) + '">' + esc(name) + "</a></td>" +
+        numCell(c.karma) + remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + newCell(unseen) + "</tr>";
+    }});
+    const head = REMAIN_COLS.map((col) => {{
+      const active = remainSort.key === col.key;
+      const aria = active ? (remainSort.dir === "asc" ? "ascending" : "descending") : "none";
+      const mark = active ? (remainSort.dir === "asc" ? "↑" : "↓") : "";
+      return '<th class="' + (col.num ? "num " : "") + 'sortable" data-sort="' + col.key +
+        '" aria-sort="' + aria + '" tabindex="0" scope="col" title="Sort by ' + esc(col.label) + '">' +
+        esc(col.label) + (mark ? ' <span class="sort-mark" aria-hidden="true">' + mark + "</span>" : "") + "</th>";
+    }}).join("");
+    remainEl.innerHTML =
+      '<article class="card remain-card"><table><thead><tr>' + head +
+      "</tr></thead><tbody>" + remainRows.join("") + "</tbody></table></article>";
+    remainEl.querySelectorAll("th.sortable").forEach((th) => {{
+      const key = th.getAttribute("data-sort");
+      const go = () => setRemainSort(key);
+      th.addEventListener("click", go);
+      th.addEventListener("keydown", (e) => {{
+        if (e.key === "Enter" || e.key === " ") {{
+          e.preventDefault();
+          go();
+        }}
+      }});
+    }});
+    remainEl.querySelectorAll("tbody tr[data-card]").forEach((tr) => {{
+      tr.addEventListener("click", (e) => {{
+        if (e.target.closest("a")) return;
+        const id = tr.getAttribute("data-card");
+        const el = id ? document.getElementById(id) : null;
+        if (!el) return;
+        location.hash = id;
+        el.scrollIntoView({{ behavior: "smooth", block: "start" }});
+      }});
+    }});
+  }}
+
   async function load() {{
     const wl = window.f916Watchlist;
     const listEl = document.getElementById("list");
-    const remainEl = document.getElementById("remain");
     const meta = document.getElementById("listMeta");
     const err = document.getElementById("error");
     if (!wl) {{
@@ -1639,7 +1757,8 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     const handles = wl.load();
     if (!handles.length) {{
       meta.textContent = "0 watched";
-      if (remainEl) remainEl.innerHTML = "";
+      remainState = null;
+      renderRemainTable();
       listEl.innerHTML = '<div class="empty">No citizens on your watchlist yet. Open any <a href="/citizens">citizen window</a> and tap <strong>Watch</strong>.</div>';
       wl.paintNavDot(false);
       return;
@@ -1697,48 +1816,9 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
           "</div></div>" + inboxHtml + "</article>"
         );
       }}
-      const remainHandles = handles.slice().sort((a, b) => {{
-        const ca = byKey[a.toLowerCase()] || {{}};
-        const cb = byKey[b.toLowerCase()] || {{}};
-        const pa = remainVal(ca.posts_remaining);
-        const pb = remainVal(cb.posts_remaining);
-        const na = pa == null ? -1 : pa;
-        const nb = pb == null ? -1 : pb;
-        if (nb !== na) return nb - na;
-        const cma = remainVal(ca.comments_remaining);
-        const cmb = remainVal(cb.comments_remaining);
-        const xa = cma == null ? -1 : cma;
-        const xb = cmb == null ? -1 : cmb;
-        if (xb !== xa) return xb - xa;
-        return String(a).localeCompare(String(b));
-      }});
-      const remainRows = remainHandles.map((h) => {{
-        const c = byKey[h.toLowerCase()] || {{ handle: h }};
-        const name = c.handle || h;
-        const id = cardId(name);
-        const unseen = unseenByKey[h.toLowerCase()] || 0;
-        return '<tr data-card="' + esc(id) + '"><td><a href="#' + esc(id) + '">' + esc(name) + "</a></td>" +
-          numCell(c.karma) + remainCell(c.posts_remaining) + remainCell(c.comments_remaining) + newCell(unseen) + "</tr>";
-      }});
-      if (remainEl) {{
-        remainEl.innerHTML =
-          '<article class="card remain-card"><table><thead><tr>' +
-          '<th>Citizen</th><th class="num">Karma</th><th class="num">Posts remaining</th><th class="num">Comments remaining</th><th class="num">New inbox</th>' +
-          "</tr></thead><tbody>" + remainRows.join("") + "</tbody></table></article>";
-      }}
+      remainState = {{ handles, byKey, unseenByKey }};
+      renderRemainTable();
       listEl.innerHTML = cards.join("");
-      if (remainEl) {{
-        remainEl.querySelectorAll("tbody tr[data-card]").forEach((tr) => {{
-          tr.addEventListener("click", (e) => {{
-            if (e.target.closest("a")) return;
-            const id = tr.getAttribute("data-card");
-            const el = id ? document.getElementById(id) : null;
-            if (!el) return;
-            location.hash = id;
-            el.scrollIntoView({{ behavior: "smooth", block: "start" }});
-          }});
-        }});
-      }}
       meta.textContent = handles.length + " watched" + (newTotal ? (" · " + newTotal + " new") : "");
       // Opening the watchlist acknowledges activity.
       wl.markAllSeen(handles.map((h) => byKey[h.toLowerCase()] || {{ handle: h, item_ids: [] }}));
