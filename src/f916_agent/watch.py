@@ -1491,6 +1491,8 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 .card-top a.handle{{font-family:Fraunces,Georgia,serif;font-weight:700;font-size:1.15rem;color:#12201c;text-decoration:none}}
 .card-top a.handle:hover{{color:#0c7c66}}
 .pill{{display:inline-flex;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(12,124,102,.1);color:#0c7c66;border:1px solid rgba(12,124,102,.22)}}
+a.pill{{text-decoration:none;cursor:pointer}}
+a.pill:hover{{background:rgba(12,124,102,.18);border-color:rgba(12,124,102,.4)}}
 .pill.warn{{background:rgba(212,148,64,.18);color:#9a5b16;border-color:rgba(154,91,22,.25)}}
 .pill.muted{{background:rgba(18,32,28,.06);color:#5a6a64;border-color:rgba(18,32,28,.1)}}
 .card-actions{{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}}
@@ -1500,6 +1502,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
 .inbox-list .eyebrow{{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;margin:0 0 4px;font-size:12px;color:#5a6a64}}
 .inbox-list .body{{color:#12201c}}
 .inbox-list a{{color:#0c7c66;font-weight:600;text-decoration:none}}
+.inbox-list a.pill{{font-weight:700}}
 .err{{background:rgba(180,60,60,.1);border:1px solid rgba(140,40,40,.25);padding:10px 12px;border-radius:10px;margin:0 0 12px;font-size:13px}}
 .err[hidden]{{display:none}}
 .remain-card{{margin:0 0 18px;max-width:100%;overflow-x:auto}}
@@ -1605,6 +1608,31 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     if (k === "society_mention") return "@me";
     return k || "inbox";
   }}
+  function inboxCommentId(it) {{
+    if (!it) return null;
+    if (it.comment_id != null && it.comment_id !== "") return it.comment_id;
+    if (it.kind !== "mention" && it.id != null && it.id !== "") return it.id;
+    return null;
+  }}
+  function inboxHref(it) {{
+    if (!it || it.post_id == null || it.post_id === "") return "";
+    const post = "/post/" + encodeURIComponent(it.post_id);
+    const commentId = inboxCommentId(it);
+    const isPostMention = it.kind === "mention" && it.source === "post";
+    if (isPostMention || commentId == null) return post;
+    return post + "#c-" + encodeURIComponent(commentId);
+  }}
+  function kindChip(it) {{
+    const label = esc(kindLabel(it && it.kind));
+    const href = inboxHref(it);
+    if (!href) return '<span class="pill">' + label + "</span>";
+    const commentId = inboxCommentId(it);
+    const isPostMention = it.kind === "mention" && it.source === "post";
+    const title = (isPostMention || commentId == null)
+      ? ("Open post #" + it.post_id)
+      : ("Open comment #" + commentId);
+    return '<a class="pill" href="' + href + '" title="' + esc(title) + '">' + label + "</a>";
+  }}
   function remainVal(n) {{
     if (n == null || n === "") return null;
     const v = Number(n);
@@ -1683,6 +1711,22 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
     if (na !== nb) return remainSort.dir === "asc" ? na - nb : nb - na;
     return nameCmp;
   }}
+  function sortedRemainHandles() {{
+    if (!remainState || !remainState.handles.length) return [];
+    return remainState.handles.slice().sort(compareRemain);
+  }}
+  function orderCitizenCards() {{
+    const listEl = document.getElementById("list");
+    if (!listEl || !remainState) return;
+    const byHandle = {{}};
+    listEl.querySelectorAll("article.card[data-handle]").forEach((el) => {{
+      byHandle[String(el.getAttribute("data-handle") || "").toLowerCase()] = el;
+    }});
+    for (const h of sortedRemainHandles()) {{
+      const el = byHandle[h.toLowerCase()];
+      if (el) listEl.appendChild(el);
+    }}
+  }}
   function setRemainSort(key) {{
     if (remainSort.key === key) {{
       remainSort = {{ key, dir: remainSort.dir === "desc" ? "asc" : "desc" }};
@@ -1699,10 +1743,9 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
       remainEl.innerHTML = "";
       return;
     }}
-    const handles = remainState.handles;
     const byKey = remainState.byKey;
     const unseenByKey = remainState.unseenByKey;
-    const remainHandles = handles.slice().sort(compareRemain);
+    const remainHandles = sortedRemainHandles();
     const remainRows = remainHandles.map((h) => {{
       const c = byKey[h.toLowerCase()] || {{ handle: h }};
       const name = c.handle || h;
@@ -1743,6 +1786,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
         el.scrollIntoView({{ behavior: "smooth", block: "start" }});
       }});
     }});
+    orderCitizenCards();
   }}
 
   async function load() {{
@@ -1774,7 +1818,7 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
       for (const c of (data.citizens || [])) {{
         if (c && c.handle) byKey[String(c.handle).toLowerCase()] = c;
       }}
-      const cards = [];
+      const cardByKey = {{}};
       const unseenByKey = {{}};
       let newTotal = 0;
       for (const h of handles) {{
@@ -1797,12 +1841,12 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
                 const postBit = postHref
                   ? ' · <a href="' + postHref + '">' + esc(it.post_title || ("#" + it.post_id)) + "</a>"
                   : "";
-                return '<li><div class="eyebrow"><span class="pill">' + esc(kindLabel(it.kind)) + "</span><span>" +
+                return '<li><div class="eyebrow">' + kindChip(it) + "<span>" +
                   who + postBit + '</span><span>' + esc(fmtAgo(it.created_at)) + "</span></div>" +
                   '<div class="body">' + esc(it.body || "") + "</div></li>";
               }}).join("") + "</ul>"
             : '<p class="meta">Inbox quiet.</p>');
-        cards.push(
+        cardByKey[h.toLowerCase()] =
           '<article class="card' + (unseen > 0 ? " has-new" : "") + '" id="' + esc(cardId(c.handle || h)) + '" data-handle="' + esc(c.handle || h) + '">' +
           '<div class="card-top">' +
           '<a class="handle" href="/' + encodeURIComponent(c.handle || h) + '">' + esc(c.handle || h) + "</a>" +
@@ -1813,12 +1857,11 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.7rem,3.5vw,2.2rem);marg
           '<div class="card-actions">' +
           '<a class="btn" href="/' + encodeURIComponent(c.handle || h) + '">Open</a>' +
           '<button type="button" class="btn" data-unwatch="' + esc(c.handle || h) + '">Unwatch</button>' +
-          "</div></div>" + inboxHtml + "</article>"
-        );
+          "</div></div>" + inboxHtml + "</article>";
       }}
       remainState = {{ handles, byKey, unseenByKey }};
+      listEl.innerHTML = sortedRemainHandles().map((h) => cardByKey[h.toLowerCase()] || "").join("");
       renderRemainTable();
-      listEl.innerHTML = cards.join("");
       meta.textContent = handles.length + " watched" + (newTotal ? (" · " + newTotal + " new") : "");
       // Opening the watchlist acknowledges activity.
       wl.markAllSeen(handles.map((h) => byKey[h.toLowerCase()] || {{ handle: h, item_ids: [] }}));

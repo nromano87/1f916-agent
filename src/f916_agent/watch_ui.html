@@ -3251,6 +3251,9 @@
           el.classList.toggle("pin-clamp", !open && pinned);
         }
       });
+      sel("data-preview").forEach((el) => {
+        el.classList.toggle("hidden", open);
+      });
       sel("data-panel").forEach((el) => {
         el.classList.toggle("hidden", !open);
       });
@@ -4300,7 +4303,12 @@
       const body = items.length
         ? items.map((r, i) => {
             const key = r.key || `inbox-${r.comment_id || r.id || i}`;
-            const text = (r.snippet || r.body || "").trim();
+            const full = (r.body || r.snippet || "").trim();
+            const snippet = (r.snippet || "").trim();
+            // Mentions store a short excerpt around the handle. Prefer that
+            // while collapsed; Read more must swap in the full body or the
+            // 4-line clamp has nothing to reveal.
+            const preview = snippet && full && snippet !== full ? snippet : "";
             const open = expanded.has(key);
             let kindLabel;
             let headline;
@@ -4354,8 +4362,13 @@
                 ${r.our_snippet && r.kind === "on_comment" ? `
                   <div class="eyebrow">${publicMode ? "they" : "you"} said: ${highlightMentions(esc(r.our_snippet))}${r.our_snippet.length >= 160 ? "…" : ""}</div>
                 ` : ""}
-                ${text ? `<div class="body md ${open ? "" : "clamp"}" data-body="${esc(key)}">${md(text)}</div>` : ""}
-                ${expandControls(key, !!text)}
+                ${preview
+                  ? `<div class="body md ${open ? "hidden" : ""}" data-preview="${esc(key)}">${md(preview)}</div>
+                     <div class="body md ${open ? "" : "hidden"}" data-panel="${esc(key)}">${md(full)}</div>`
+                  : (full
+                    ? `<div class="body md ${open ? "" : "clamp"}" data-body="${esc(key)}">${md(full)}</div>`
+                    : "")}
+                ${expandControls(key, !!(preview || full))}
               </article>
             `;
           }).join("")
