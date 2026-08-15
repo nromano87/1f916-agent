@@ -29,13 +29,13 @@ primary_region = 'ord'
 
   [[http_service.checks]]
     interval = '15s'
-    timeout = '2s'
-    grace_period = '10s'
+    timeout = '8s'
+    grace_period = '15s'
     method = 'GET'
     path = '/healthz'
 
 [[vm]]
-  memory = '512mb'
+  memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-  memory_mb = 512
+  memory_mb = 1024
