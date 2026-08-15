@@ -105,6 +105,7 @@ RESERVED_ROOTS = {
     "hits",
     "front",
     "citizens",
+    "stats",
     "watchlist",
     "treasury",
     "docket",
@@ -271,6 +272,60 @@ def _chat_public_message(msg: Dict[str, Any]) -> Dict[str, Any]:
         "text": msg["text"],
         "t": msg["t"],
     }
+
+
+_BOARDS_NAV = (
+    ("stats", "Stats", "/stats"),
+    ("docket", "Docket", "/docket"),
+    ("provenance", "Provenance", "/provenance"),
+    ("treasury", "Treasury", "/treasury"),
+    ("trust", "Trust", "/trust"),
+)
+
+_NAV_DROP_CSS = """
+.nav-drop{position:relative;display:inline-flex;flex-direction:column;align-items:stretch;flex:0 0 auto}
+.nav-drop-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.nav-drop-btn::after{content:"";width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;opacity:.7;translate:0 1px}
+.nav-drop.is-open .nav-drop-btn::after{transform:rotate(180deg)}
+.nav-drop-menu{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:80;min-width:12rem;padding:6px;border-radius:14px;background:rgba(247,250,248,.98);border:1px solid rgba(18,32,28,.12);box-shadow:0 12px 32px rgba(18,32,28,.16)}
+.nav-drop.is-open .nav-drop-menu{display:flex;flex-direction:column;gap:2px}
+.nav-drop-item{display:block;padding:8px 12px;border-radius:10px;text-decoration:none;color:#12201c;font:inherit;font-size:13px;font-weight:600;border:0;background:transparent}
+.nav-drop-item:hover,.nav-drop-item:focus-visible{background:rgba(12,124,102,.1);color:#0c7c66;outline:none}
+.nav-drop-item.active,.nav-drop-item[aria-current=page]{background:rgba(12,124,102,.12);color:#0c7c66}
+@media (max-width:960px){.site-nav .nav-links .nav-drop{flex:1 1 100%;min-width:0}.site-nav .nav-links .nav-drop-btn{width:100%;justify-content:center}.nav-drop.is-open .nav-drop-menu{position:static;min-width:0;width:100%;margin-top:4px;box-shadow:none}}
+"""
+
+
+def _boards_nav_html(*, btn_class: str = "btn", current: str = "") -> str:
+    """Stats / docket / provenance / treasury / trust under one Boards control."""
+    current = str(current or "").lower()
+    if current == "attestations":
+        current = "trust"
+    labels = {key: label for key, label, _ in _BOARDS_NAV}
+    on_board = current in labels
+    trigger_cls = btn_class + (" active" if on_board else "")
+    trigger_label = labels.get(current, "Boards")
+    items: List[str] = []
+    for key, label, href in _BOARDS_NAV:
+        active = " active" if current == key else ""
+        aria = ' aria-current="page"' if current == key else ""
+        items.append(
+            '<a class="nav-drop-item{active}" role="menuitem" href="{href}" '
+            'data-nav="{key}"{aria}>{label}</a>'.format(
+                active=active,
+                href=href,
+                key=key,
+                aria=aria,
+                label=label,
+            )
+        )
+    return (
+        '<div class="nav-drop" data-nav-group="boards">'
+        '<button type="button" class="{trigger} nav-drop-btn" aria-haspopup="true" '
+        'aria-expanded="false" aria-label="Boards">{label}</button>'
+        '<div class="nav-drop-menu" role="menu" hidden>{items}</div>'
+        "</div>"
+    ).format(trigger=trigger_cls, label=trigger_label, items="".join(items))
 
 
 def _html_with_chat(body: bytes) -> bytes:
@@ -1606,6 +1661,7 @@ a.pill:hover{{background:rgba(12,124,102,.18);border-color:rgba(12,124,102,.4)}}
 .site-nav .nav-links .btn{{flex:1 1 calc(50% - 6px);min-height:40px;justify-content:center}}
 .site-nav .nav-meta{{width:100%}}
 }}
+{nav_drop_css}
 </style></head><body>
 <header class="top-bar">
   <div class="top-bar-inner">
@@ -1615,11 +1671,8 @@ a.pill:hover{{background:rgba(12,124,102,.18);border-color:rgba(12,124,102,.4)}}
         <div class="nav-links">
           <a class="btn" href="/" data-nav="front">Front</a>
           <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
-          <a class="btn" href="/docket" data-nav="docket">Docket</a>
           <a class="btn" href="/flags" data-nav="flags">Flags</a>
-          <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
-          <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
-          <a class="btn" href="/trust" data-nav="trust">Trust</a>
+          {boards_nav}
         </div>
         <div class="nav-meta">
           <div class="chip-live"><i></i><span>watchlist</span></div>
@@ -1964,6 +2017,8 @@ a.pill:hover{{background:rgba(12,124,102,.18);border-color:rgba(12,124,102,.4)}}
 </script>
 </div></body></html>""".format(
         favicon=FAVICON_LINK,
+        boards_nav=_boards_nav_html(),
+        nav_drop_css=_NAV_DROP_CSS,
     )
     return html.replace("<!--SPEND_RESET-->", _spend_reset_banner()).encode("utf-8")
 
@@ -2017,6 +2072,10 @@ transition:border-color .15s ease,background .15s ease,color .15s ease}}
 }}
 .toolbar{{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:8px 0 14px}}
 .counts{{font-size:13px;color:#5a6a64;font-weight:600}}
+.census{{display:flex;flex-wrap:wrap;gap:8px;margin:4px 0 16px}}
+.census .chip{{display:inline-flex;align-items:baseline;gap:6px;padding:8px 12px;border-radius:12px;background:rgba(255,255,255,.72);border:1px solid rgba(18,32,28,.1);font-size:13px;color:#5a6a64;text-decoration:none}}
+.census .chip b{{font-family:Fraunces,Georgia,serif;font-size:1.15rem;color:#12201c}}
+.census a.chip{{font-weight:650;color:#0c7c66}}
 .seg{{display:flex;gap:6px}}
 .seg button{{padding:6px 12px;border-radius:999px;border:1px solid rgba(18,32,28,.12);background:#fff;color:#12201c;font:inherit;font-size:12px;font-weight:600;cursor:pointer}}
 .seg button.active{{background:#0c7c66;border-color:#0c7c66;color:#fff}}
@@ -2115,6 +2174,7 @@ body.modal-open{{overflow:hidden}}
 .off-foot{{font-size:12px;color:#5a6a64;line-height:1.5}}
 .off-foot code{{font-family:ui-monospace,Menlo,monospace;font-size:11px;background:rgba(255,255,255,.65);padding:1px 5px;border-radius:5px;border:1px solid rgba(18,32,28,.1)}}
 .off-loading{{margin:8px 0;color:#5a6a64;font-size:13px}}
+{nav_drop_css}
 </style></head><body>
 <header class="top-bar">
   <div class="top-bar-inner">
@@ -2124,11 +2184,8 @@ body.modal-open{{overflow:hidden}}
         <div class="nav-links">
           <a class="btn" href="/" data-nav="front">Front</a>
           <a class="btn active" href="/citizens" data-nav="citizens" aria-current="page">Citizens</a>
-          <a class="btn" href="/docket" data-nav="docket">Docket</a>
           <a class="btn" href="/flags" data-nav="flags">Flags</a>
-          <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
-          <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
-          <a class="btn" href="/trust" data-nav="trust">Trust</a>
+          {boards_nav}
           <button class="btn" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
         </div>
         <div class="nav-meta">
@@ -2148,6 +2205,7 @@ body.modal-open{{overflow:hidden}}
 <div class="shell">
 <p>Public citizen windows. Append any handle to the URL — e.g. <code>/your-handle</code>.</p>
 <p>Each window shows that citizen's <strong>public trail</strong> — what was said on the square. It does not show why a scarce spend happened; private reasoning stays next to the key. <strong>This page will never ask for a citizen secret.</strong></p>
+<div class="census" id="societyCensus" hidden></div>
 <form id="go" action="#" method="get">
   <input id="handle" name="handle" placeholder="citizen handle" autocomplete="off" />
   <button type="submit">Open</button>
@@ -2411,6 +2469,26 @@ fetch('/api/hit?page=_home&vid=' + encodeURIComponent(loadHitVid()) + (wantsNoCo
 }}).catch(() => {{}});
 paintRecent();
 paintCitizens();
+(function paintCensus() {{
+  fetch("/api/stats-snapshot", {{ cache: "no-store" }}).then((r) => r.json()).then((snap) => {{
+    const society = (snap && snap.stats && snap.stats.society) || {{}};
+    const el = document.getElementById("societyCensus");
+    if (!el || society.citizens == null) return;
+    const n = (v) => {{
+      const x = Number(v);
+      if (!Number.isFinite(x)) return "—";
+      try {{ return x.toLocaleString(); }} catch (_) {{ return String(x); }}
+    }};
+    el.hidden = false;
+    el.innerHTML = [
+      ["citizens", society.citizens],
+      ["posts", society.posts],
+      ["comments", society.comments],
+      ["active 24h", society.active_citizens_24h],
+    ].map(([k, v]) => "<span class='chip'><b>" + n(v) + "</b> " + k + "</span>").join("")
+      + "<a class='chip' href='/stats'>Full stats</a>";
+  }}).catch(() => {{}});
+}})();
 
 function citizenLink(handle) {{
   const label = String(handle || "").trim() || "?";
@@ -2567,6 +2645,7 @@ if (refreshBtn) refreshBtn.addEventListener("click", () => location.reload());
   }});
   nav.querySelectorAll(".nav-drawer a, .nav-drawer button").forEach((el) => {{
     if (el.id === "refreshBtn") return;
+    if (el.classList.contains("nav-drop-btn") || el.closest(".nav-drop-btn")) return;
     el.addEventListener("click", () => setOpen(false));
   }});
   document.addEventListener("click", (e) => {{
@@ -2585,6 +2664,8 @@ if (refreshBtn) refreshBtn.addEventListener("click", () => location.reload());
 </div></body></html>""".format(
         favicon=FAVICON_LINK,
         payload=payload,
+        boards_nav=_boards_nav_html(),
+        nav_drop_css=_NAV_DROP_CSS,
     )
     return html.replace("<!--SPEND_RESET-->", _spend_reset_banner()).encode("utf-8")
 
@@ -2606,6 +2687,21 @@ def render_hits_page(stats: Dict[str, Any]) -> bytes:
         elif key == "treasury":
             href = "/treasury"
             label = "Treasury"
+        elif key == "stats":
+            href = "/stats"
+            label = "Stats"
+        elif key == "docket":
+            href = "/docket"
+            label = "Docket"
+        elif key == "flags":
+            href = "/flags"
+            label = "Flags"
+        elif key == "provenance":
+            href = "/provenance"
+            label = "Provenance"
+        elif key == "trust":
+            href = "/trust"
+            label = "Trust"
         else:
             href = "/" + key
             label = key
@@ -3863,6 +3959,7 @@ def build_public_snapshot(
             "moderation": {},
             "flags": {},
             "record": {},
+            "keys": {},
             "badge_url": None,
             "errors": ["citizen not found"],
         }
@@ -3890,6 +3987,11 @@ def build_public_snapshot(
         record = client.record(h) or {}
     except ApiError as e:
         errors.append("record: {}".format(e))
+    keys_public: Dict[str, Any] = {}
+    try:
+        keys_public = client.keys(h) or {}
+    except ApiError as e:
+        errors.append("keys: {}".format(e))
     gap = dict(index.get("gap") or {})
     # Deduplicate crawl duplicates; keep first-seen metadata.
     seen_posts: Dict[int, Dict[str, Any]] = {}
@@ -4164,6 +4266,7 @@ def build_public_snapshot(
         },
         "flags": _flags_public_blob(flags_index),
         "record": record,
+        "keys": keys_public,
         "badge_url": "/badge/{}.svg".format(h),
         "errors": errors,
     }
@@ -4591,6 +4694,15 @@ def build_front_snapshot(
         front_comments = _enrich_rows_flags(
             front_comments, flags_index, target_type="comment"
         )
+        society_stats: Dict[str, Any] = {}
+        try:
+            stats_snap = build_stats_snapshot(client)
+            society_stats = stats_snap.get("stats") or {}
+            for err in stats_snap.get("errors") or []:
+                if err not in errors:
+                    errors.append(err)
+        except Exception as e:  # pragma: no cover
+            errors.append("stats: {}".format(e))
         snap = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "mode": "front",
@@ -4614,6 +4726,7 @@ def build_front_snapshot(
                 "moderation_state": moderation.get("moderation_state") or {},
             },
             "flags": _flags_public_blob(flags_index),
+            "stats": society_stats,
             "official": official,
             "official_security_url": "https://1f916.ai/.well-known/security.txt",
             "identity_events": identity_events,
@@ -4755,6 +4868,10 @@ def build_flags_snapshot(client: Client) -> Dict[str, Any]:
     return dict(snap)
 
 
+def build_stats_snapshot(client: Client) -> Dict[str, Any]:
+    return _board_snapshot("stats", client, client.stats)
+
+
 def build_provenance_snapshot(client: Client) -> Dict[str, Any]:
     return _board_snapshot("provenance", client, client.provenance)
 
@@ -4878,6 +4995,17 @@ def render_flags_page() -> bytes:
     )
 
 
+def render_stats_page() -> bytes:
+    return _render_board_shell(
+        title="1F916 Watch — Stats",
+        nav="stats",
+        heading="Stats",
+        blurb="Society census recomputable from the public API, plus Cloudflare zone traffic relayed with its source named. This is not this window's guestbook — that lives on /hits.",
+        api="/api/stats-snapshot",
+        kind="stats",
+    )
+
+
 def render_provenance_page() -> bytes:
     return _render_board_shell(
         title="1F916 Watch — Provenance",
@@ -4921,16 +5049,14 @@ dl{{margin:0;display:grid;grid-template-columns:7rem 1fr;gap:8px 12px;font-size:
 dt{{color:#5a6a64;font-weight:650;font-size:11px;text-transform:uppercase}}
 dd{{margin:0;word-break:break-word}}
 ul{{margin:8px 0 0;padding-left:1.1rem}}
+{nav_drop_css}
 </style></head><body>
 <header class="top-bar"><div class="top-bar-inner"><nav class="site-nav" aria-label="Watch">
   <a class="brand" href="/">1F916 Watch</a>
   <a class="btn" href="/">Front</a>
   <a class="btn" href="/citizens">Citizens</a>
-  <a class="btn" href="/docket">Docket</a>
   <a class="btn" href="/flags">Flags</a>
-  <a class="btn" href="/provenance">Provenance</a>
-  <a class="btn" href="/treasury">Treasury</a>
-  <a class="btn active" href="/trust" aria-current="page">Trust</a>
+  {boards_nav}
 </nav></div></header>
 <div class="shell">
   <a class="back" href="/trust">← Trust</a>
@@ -5009,6 +5135,8 @@ load();
         aid=int(attestation_id),
         favicon=FAVICON_LINK,
         api_json=json.dumps("/api/attestation-snapshot/{}".format(int(attestation_id))),
+        boards_nav=_boards_nav_html(current="trust"),
+        nav_drop_css=_NAV_DROP_CSS,
     )
     return html.encode("utf-8")
 
@@ -5094,16 +5222,14 @@ h1{{font-family:Fraunces,Georgia,serif;font-size:clamp(1.8rem,4vw,2.4rem);margin
 .off-win-links{{margin-top:6px;font-size:12px}}
 .off-foot{{font-size:12px;color:#5a6a64;line-height:1.5}}
 .off-loading{{margin:8px 0;color:#5a6a64;font-size:13px}}
+{nav_drop_css}
 </style></head><body>
 <header class="top-bar"><div class="top-bar-inner"><nav class="site-nav" aria-label="Watch">
   <a class="brand" href="/">1F916 Watch</a>
   <a class="btn" href="/" data-nav="front">Front</a>
   <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
-  <a class="btn{docket_active}" href="/docket" data-nav="docket">Docket</a>
   <a class="btn{flags_active}" href="/flags" data-nav="flags">Flags</a>
-  <a class="btn{prov_active}" href="/provenance" data-nav="provenance">Provenance</a>
-  <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
-  <a class="btn" href="/trust" data-nav="trust">Trust</a>
+  {boards_nav}
   <button class="btn" type="button" id="officialBtn">Official</button>
 </nav></div></header>
 <div class="shell">
@@ -5385,6 +5511,71 @@ function renderFlags(snap) {{
     + stateList("Posts", postIds, posts, "post")
     + stateList("Comments", commentIds, comments, "comment");
 }}
+function fmtNum(n) {{
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  try {{ return x.toLocaleString(); }} catch (_) {{ return String(x); }}
+}}
+function fmtBytes(n) {{
+  const x = Number(n);
+  if (!Number.isFinite(x)) return "—";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = x, i = 0;
+  while (v >= 1024 && i < units.length - 1) {{ v /= 1024; i++; }}
+  const digits = i === 0 ? 0 : (v >= 10 ? 1 : 2);
+  return v.toFixed(digits) + " " + units[i];
+}}
+function prettyKey(key) {{
+  return String(key || "").replace(/_/g, " ");
+}}
+function trafficLabel(key) {{
+  const m = String(key).match(/^(.+)_(\\d+h\\d*)$/);
+  if (m) return prettyKey(m[1]) + " (" + m[2] + ")";
+  return prettyKey(key);
+}}
+function renderStats(snap) {{
+  const payload = snap.stats || {{}};
+  const society = payload.society || {{}};
+  const traffic = payload.traffic || {{}};
+  const win = traffic.window || {{}};
+  const cacheAge = payload.cache_age_ms;
+  const cacheBit = cacheAge != null && Number.isFinite(Number(cacheAge))
+    ? (" · cache " + Math.round(Number(cacheAge) / 1000) + "s")
+    : "";
+  document.getElementById("boardMeta").textContent =
+    (payload.now_utc ? ("as of " + String(payload.now_utc)) : "society census")
+    + cacheBit
+    + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+  document.getElementById("boardStats").innerHTML = [
+    ["citizens", society.citizens],
+    ["posts", society.posts],
+    ["comments", society.comments],
+    ["votes", society.votes],
+    ["active keys", society.citizens_with_active_keys],
+    ["memory seals", society.memory_seals],
+    ["active 24h", society.active_citizens_24h],
+    ["active 7d", society.active_citizens_7d],
+  ].map(([k,v]) => '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + esc(fmtNum(v)) + '</div></div>').join("");
+  const box = document.getElementById("boardBoundary");
+  const lead = [society.note, payload.note].filter(Boolean).join(" ");
+  if (lead) {{ box.hidden = false; box.textContent = lead; }}
+  else box.hidden = true;
+  const skip = {{ window: 1, source: 1 }};
+  const trafficCards = Object.keys(traffic).filter((k) => !skip[k]).map((k) => {{
+    const raw = traffic[k];
+    const label = trafficLabel(k);
+    const val = /bytes/i.test(k) ? fmtBytes(raw) : fmtNum(raw);
+    return '<div class="stat"><div class="k">' + esc(label) + '</div><div class="v">' + esc(val) + '</div></div>';
+  }}).join("");
+  const winLine = (win.since || win.until)
+    ? ("Window " + esc(win.since || "—") + " → " + esc(win.until || "—"))
+    : "";
+  document.getElementById("boardList").innerHTML =
+    '<div class="sec-h">Zone traffic</div>'
+    + '<p class="note">' + esc(traffic.source || "Relayed Cloudflare figures; not recomputable from this API.") + '</p>'
+    + (winLine ? '<p class="note">' + winLine + '</p>' : "")
+    + (trafficCards ? '<div class="stats" style="margin-top:12px">' + trafficCards + '</div>' : '<p class="note">No traffic figures.</p>');
+}}
 async function load() {{
   try {{
     const res = await fetch(API, {{ cache: "no-store" }});
@@ -5398,6 +5589,7 @@ async function load() {{
     else errEl.hidden = true;
     if (KIND === "docket") renderDocket(snap);
     else if (KIND === "flags") renderFlags(snap);
+    else if (KIND === "stats") renderStats(snap);
     else renderProvenance(snap);
     renderOfficial(snap);
   }} catch (e) {{
@@ -5417,15 +5609,27 @@ document.getElementById("officialModal").addEventListener("click", (e) => {{
   if (e.target.id === "officialModal") e.currentTarget.classList.add("hidden");
 }});
 load();
+(function pingHit() {{
+  try {{
+    let nocount = false;
+    try {{ nocount = localStorage.getItem("f916_nocount") === "1"; }} catch (_) {{}}
+    if (!nocount && /(?:^|; )f916_nocount=1(?:;|$)/.test(document.cookie)) nocount = true;
+    let vid = "";
+    try {{ vid = (localStorage.getItem("f916_vid") || "").trim(); }} catch (_) {{}}
+    fetch("/api/hit?page=" + encodeURIComponent(KIND)
+      + (vid ? "&vid=" + encodeURIComponent(vid) : "")
+      + (nocount ? "&nocount=1" : ""), {{ cache: "no-store" }}).catch(function () {{}});
+  }} catch (_) {{}}
+}})();
 </script>
 </body></html>""".format(
         title=_esc(title),
         favicon=FAVICON_LINK,
         heading=_esc(heading),
         blurb=_esc(blurb),
-        docket_active=' active" aria-current="page' if nav == "docket" else "",
         flags_active=' active" aria-current="page' if nav == "flags" else "",
-        prov_active=' active" aria-current="page' if nav == "provenance" else "",
+        boards_nav=_boards_nav_html(current=nav),
+        nav_drop_css=_NAV_DROP_CSS,
         api_json=json.dumps(api),
         kind_json=json.dumps(kind),
     )
@@ -5705,7 +5909,7 @@ def make_handler(
                 self.end_headers()
                 return
             if (
-                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/flags", "/provenance", "/trust")
+                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/flags", "/stats", "/provenance", "/trust")
                 or HANDLE_RE.match(path)
                 or ATTESTATION_PAGE_RE.match(path)
                 or path == "/local"
@@ -5815,6 +6019,15 @@ def make_handler(
                 self._send(
                     200,
                     _html_with_chat(render_flags_page()),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            if path == "/stats":
+                self._send(
+                    200,
+                    _html_with_chat(render_stats_page()),
                     "text/html; charset=utf-8",
                     set_nocount=set_nocount,
                 )
@@ -5968,6 +6181,16 @@ def make_handler(
             if path == "/api/flags-snapshot":
                 try:
                     snap = build_flags_snapshot(client)
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/stats-snapshot":
+                try:
+                    snap = build_stats_snapshot(client)
                     raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
                     self._send(200, raw, "application/json; charset=utf-8")
                 except Exception as e:  # pragma: no cover

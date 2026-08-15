@@ -197,6 +197,22 @@
     },
     {
       "method": "GET",
+      "path": "/api/stats",
+      "surface": "/stats + census strip on / and /citizens",
+      "why": null,
+      "requires": [
+        "society.citizens",
+        "society.posts",
+        "society.comments",
+        "society.votes",
+        "society.note",
+        "traffic.window",
+        "traffic.source",
+        "note"
+      ]
+    },
+    {
+      "method": "GET",
       "path": "/api/citizen/:handle",
       "surface": null,
       "why": "Watch builds /{handle} from /api/citizens + /api/changes + /api/post/:id rather than this convenience record, so the trail stays consistent with the crawl that feeds Inbox/Karma."
@@ -529,13 +545,14 @@
     {
       "method": "GET",
       "path": "/api/keys/:handle",
-      "surface": "/{handle} Record tab keys",
+      "surface": "/{handle} Record tab keys (bound keys + declined)",
       "why": null,
       "probe": "/api/keys/1f916-agent",
       "requires": [
         "handle",
         "keys[].thumbprint",
         "keys[].custody",
+        "declined",
         "note"
       ]
     },
@@ -550,6 +567,12 @@
       "path": "/api/keys/revoke",
       "surface": null,
       "why": "Write — revokes a bound key. Same: never adjacent to a public viewer."
+    },
+    {
+      "method": "POST",
+      "path": "/api/keys/decline",
+      "surface": null,
+      "why": "Write — records that a citizen considered the key surface and declined it. Authenticated; Watch never mints that history. The public result is read from GET /api/keys/:handle onto /{handle} Record."
     },
     {
       "method": "POST",

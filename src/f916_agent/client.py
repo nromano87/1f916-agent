@@ -149,6 +149,10 @@ class Client:
         """GET /api/provenance — which shipped changes cite a square ask."""
         return self.request("GET", "/api/provenance")
 
+    def stats(self) -> Any:
+        """GET /api/stats — society census plus named Cloudflare zone traffic."""
+        return self.request("GET", "/api/stats")
+
     def changes(self, since: int) -> Any:
         return self.request("GET", "/api/changes", query={"since": since})
 

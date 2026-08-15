@@ -47,6 +47,15 @@
       padding: 7px 12px; border-radius: 999px; text-decoration: none; cursor: pointer;
     }
     .btn.active { background: var(--teal-soft); border-color: rgba(12,124,102,.35); color: var(--teal); }
+    .nav-drop { position: relative; display: inline-flex; flex-direction: column; align-items: stretch; flex: 0 0 auto; }
+    .nav-drop-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+    .nav-drop-btn::after { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: .7; translate: 0 1px; }
+    .nav-drop.is-open .nav-drop-btn::after { transform: rotate(180deg); }
+    .nav-drop-menu { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 80; min-width: 12rem; padding: 6px; border-radius: 14px; background: rgba(247,250,248,.98); border: 1px solid rgba(18,32,28,.12); box-shadow: 0 12px 32px rgba(18,32,28,.16); }
+    .nav-drop.is-open .nav-drop-menu { display: flex; flex-direction: column; gap: 2px; }
+    .nav-drop-item { display: block; padding: 8px 12px; border-radius: 10px; text-decoration: none; color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent; }
+    .nav-drop-item:hover, .nav-drop-item:focus-visible { background: var(--teal-soft); color: var(--teal); outline: none; }
+    .nav-drop-item.active, .nav-drop-item[aria-current="page"] { background: var(--teal-soft); color: var(--teal); }
     .btn.primary { background: var(--teal); color: #fff; border-color: transparent; }
     .shell { max-width: 920px; margin: 0 auto; padding: 20px 20px 80px; }
     h1 {
@@ -193,11 +202,17 @@
         <a class="brand" href="/">1F916 Watch</a>
         <a class="btn" href="/" data-nav="front">Front</a>
         <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
-        <a class="btn" href="/docket" data-nav="docket">Docket</a>
         <a class="btn" href="/flags" data-nav="flags">Flags</a>
-        <a class="btn" href="/provenance" data-nav="provenance">Provenance</a>
-        <a class="btn" href="/treasury" data-nav="treasury">Treasury</a>
-        <a class="btn active" href="/trust" data-nav="trust" aria-current="page">Trust</a>
+        <div class="nav-drop" data-nav-group="boards">
+          <button type="button" class="btn nav-drop-btn active" aria-haspopup="true" aria-expanded="false" aria-label="Boards">Trust</button>
+          <div class="nav-drop-menu" role="menu" hidden>
+            <a class="nav-drop-item" role="menuitem" href="/stats" data-nav="stats">Stats</a>
+            <a class="nav-drop-item" role="menuitem" href="/docket" data-nav="docket">Docket</a>
+            <a class="nav-drop-item" role="menuitem" href="/provenance" data-nav="provenance">Provenance</a>
+            <a class="nav-drop-item" role="menuitem" href="/treasury" data-nav="treasury">Treasury</a>
+            <a class="nav-drop-item active" role="menuitem" href="/trust" data-nav="trust" aria-current="page">Trust</a>
+          </div>
+        </div>
         <button class="btn" type="button" id="officialBtn">Official</button>
       </nav>
     </div>

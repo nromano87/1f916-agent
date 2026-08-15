@@ -347,6 +347,7 @@
     hits: 1,
     front: 1,
     citizens: 1,
+    stats: 1,
     watchlist: 1,
     treasury: 1,
     docket: 1,

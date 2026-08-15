@@ -27,6 +27,7 @@ _MENTION_RESERVED = frozenset(
         "hits",
         "front",
         "citizens",
+        "stats",
         "watchlist",
         "treasury",
         "docket",

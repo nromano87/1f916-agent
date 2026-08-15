@@ -247,7 +247,17 @@
       "@media (max-width:960px){.site-nav .watch-nav{order:2;margin-left:0}}" +
       ".watch-toggle{display:inline-flex;align-items:center;gap:8px}" +
       ".watch-toggle .watch-nav-icon{width:16px;height:16px}" +
-      ".watch-toggle.is-watching{background:rgba(12,124,102,.12);border-color:rgba(12,124,102,.35);color:#0c7c66}";
+      ".watch-toggle.is-watching{background:rgba(12,124,102,.12);border-color:rgba(12,124,102,.35);color:#0c7c66}" +
+      ".nav-drop{position:relative;display:inline-flex;flex-direction:column;align-items:stretch;flex:0 0 auto}" +
+      ".nav-drop-btn{display:inline-flex;align-items:center;justify-content:center;gap:7px}" +
+      ".nav-drop-btn::after{content:'';width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid currentColor;opacity:.7;translate:0 1px}" +
+      ".nav-drop.is-open .nav-drop-btn::after{transform:rotate(180deg)}" +
+      ".nav-drop-menu{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:80;min-width:12rem;padding:6px;border-radius:14px;background:rgba(247,250,248,.98);border:1px solid rgba(18,32,28,.12);box-shadow:0 12px 32px rgba(18,32,28,.16)}" +
+      ".nav-drop.is-open .nav-drop-menu{display:flex;flex-direction:column;gap:2px}" +
+      ".nav-drop-item{display:block;padding:8px 12px;border-radius:10px;text-decoration:none;color:#12201c;font:inherit;font-size:13px;font-weight:600;border:0;background:transparent}" +
+      ".nav-drop-item:hover,.nav-drop-item:focus-visible{background:rgba(12,124,102,.1);color:#0c7c66;outline:none}" +
+      ".nav-drop-item.active,.nav-drop-item[aria-current=page]{background:rgba(12,124,102,.12);color:#0c7c66}" +
+      "@media (max-width:960px){.site-nav .nav-links .nav-drop{flex:1 1 100%;min-width:0}.site-nav .nav-links .nav-drop-btn{width:100%;justify-content:center}.nav-drop.is-open .nav-drop-menu{position:static;min-width:0;width:100%;margin-top:4px;box-shadow:none}}";
     document.head.appendChild(style);
   }
 
@@ -402,6 +412,7 @@
       hits: 1,
       front: 1,
       citizens: 1,
+      stats: 1,
       watchlist: 1,
       treasury: 1,
       docket: 1,
@@ -423,9 +434,78 @@
     if (btn && handle) bindCitizenToggle(btn, handle);
   }
 
+  const BOARD_LABELS = {
+    stats: "Stats",
+    docket: "Docket",
+    provenance: "Provenance",
+    treasury: "Treasury",
+    trust: "Trust",
+  };
+
+  function currentBoardKey() {
+    const first = (
+      location.pathname.replace(/\/+$/, "").split("/").filter(Boolean)[0] || ""
+    ).toLowerCase();
+    if (first === "attestations") return "trust";
+    return BOARD_LABELS[first] ? first : "";
+  }
+
+  function setDropOpen(drop, open) {
+    const btn = drop.querySelector(".nav-drop-btn");
+    const menu = drop.querySelector(".nav-drop-menu");
+    drop.classList.toggle("is-open", open);
+    if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (menu) {
+      if (open) menu.removeAttribute("hidden");
+      else menu.setAttribute("hidden", "");
+    }
+  }
+
+  function bootNavDrop() {
+    ensureStyles();
+    const drops = document.querySelectorAll(".nav-drop");
+    if (!drops.length) return;
+    const current = currentBoardKey();
+    drops.forEach((drop) => {
+      const btn = drop.querySelector(".nav-drop-btn");
+      if (!btn) return;
+      if (current) {
+        btn.textContent = BOARD_LABELS[current] || "Boards";
+        btn.classList.add("active");
+      }
+      drop.querySelectorAll(".nav-drop-item[data-nav]").forEach((item) => {
+        const on = item.getAttribute("data-nav") === current;
+        item.classList.toggle("active", on);
+        if (on) item.setAttribute("aria-current", "page");
+        else item.removeAttribute("aria-current");
+      });
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const open = !drop.classList.contains("is-open");
+        document.querySelectorAll(".nav-drop.is-open").forEach((other) => {
+          if (other !== drop) setDropOpen(other, false);
+        });
+        setDropOpen(drop, open);
+      });
+    });
+    document.addEventListener("click", (e) => {
+      document.querySelectorAll(".nav-drop.is-open").forEach((drop) => {
+        if (!drop.contains(e.target)) setDropOpen(drop, false);
+      });
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      document.querySelectorAll(".nav-drop.is-open").forEach((drop) => {
+        setDropOpen(drop, false);
+      });
+    });
+  }
+
   // Boot
   function boot() {
     ensureNavButton();
+    bootNavDrop();
     bootCitizenToggle();
     schedulePoll(true);
     scheduleReport();

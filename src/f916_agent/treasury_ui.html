@@ -129,6 +129,71 @@
       flex: 0 0 auto;
       order: 3;
     }
+    .nav-drop {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: stretch;
+      flex: 0 0 auto;
+    }
+    .nav-drop-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .nav-drop-btn::after {
+      content: "";
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
+      opacity: 0.7;
+      translate: 0 1px;
+    }
+    .nav-drop.is-open .nav-drop-btn::after { transform: rotate(180deg); }
+    .nav-drop-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 80;
+      min-width: 12rem;
+      padding: 6px;
+      border-radius: 14px;
+      background: rgba(247, 250, 248, 0.98);
+      border: 1px solid rgba(18, 32, 28, 0.12);
+      box-shadow: 0 12px 32px rgba(18, 32, 28, 0.16);
+    }
+    .nav-drop.is-open .nav-drop-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .nav-drop-item {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 10px;
+      text-decoration: none;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      border: 0;
+      background: transparent;
+    }
+    .nav-drop-item:hover,
+    .nav-drop-item:focus-visible {
+      background: var(--accent-soft);
+      color: var(--accent);
+      outline: none;
+    }
+    .nav-drop-item.active,
+    .nav-drop-item[aria-current="page"] {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
     .site-nav .nav-spacer { flex: 1 1 auto; min-width: 8px; order: 4; }
     .site-nav .nav-meta {
       display: flex;
@@ -776,6 +841,21 @@
         border-color: rgba(12, 124, 102, 0.28);
         box-shadow: 0 1px 2px rgba(18, 32, 28, 0.06);
       }
+      .site-nav .nav-links .nav-drop {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+      .site-nav .nav-links .nav-drop-btn {
+        width: 100%;
+        justify-content: center;
+      }
+      .nav-drop.is-open .nav-drop-menu {
+        position: static;
+        min-width: 0;
+        width: 100%;
+        margin-top: 4px;
+        box-shadow: none;
+      }
       .site-nav .nav-meta {
         display: flex;
         flex-wrap: wrap;
@@ -836,11 +916,17 @@
           <div class="nav-links">
             <a class="btn secondary" href="/" data-nav="front">Front</a>
             <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
-            <a class="btn secondary" href="/docket" data-nav="docket">Docket</a>
             <a class="btn secondary" href="/flags" data-nav="flags">Flags</a>
-            <a class="btn secondary" href="/provenance" data-nav="provenance">Provenance</a>
-            <a class="btn secondary active" href="/treasury" data-nav="treasury" aria-current="page">Treasury</a>
-            <a class="btn secondary" href="/trust" data-nav="trust">Trust</a>
+            <div class="nav-drop" data-nav-group="boards">
+              <button type="button" class="btn secondary nav-drop-btn active" aria-haspopup="true" aria-expanded="false" aria-label="Boards">Treasury</button>
+              <div class="nav-drop-menu" role="menu" hidden>
+                <a class="nav-drop-item" role="menuitem" href="/stats" data-nav="stats">Stats</a>
+                <a class="nav-drop-item" role="menuitem" href="/docket" data-nav="docket">Docket</a>
+                <a class="nav-drop-item" role="menuitem" href="/provenance" data-nav="provenance">Provenance</a>
+                <a class="nav-drop-item active" role="menuitem" href="/treasury" data-nav="treasury" aria-current="page">Treasury</a>
+                <a class="nav-drop-item" role="menuitem" href="/trust" data-nav="trust">Trust</a>
+              </div>
+            </div>
             <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
           </div>
           <div class="nav-meta">
@@ -1028,6 +1114,7 @@
         setOpen(!nav.classList.contains("is-open"));
       });
       nav.querySelectorAll(".nav-drawer a, .nav-drawer button").forEach((el) => {
+        if (el.classList.contains("nav-drop-btn") || el.closest(".nav-drop-btn")) return;
         el.addEventListener("click", () => setOpen(false));
       });
       document.addEventListener("click", (e) => {

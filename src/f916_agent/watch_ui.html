@@ -218,6 +218,71 @@
       flex: 0 0 auto;
       order: 3;
     }
+    .nav-drop {
+      position: relative;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: stretch;
+      flex: 0 0 auto;
+    }
+    .nav-drop-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .nav-drop-btn::after {
+      content: "";
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid currentColor;
+      opacity: 0.7;
+      translate: 0 1px;
+    }
+    .nav-drop.is-open .nav-drop-btn::after { transform: rotate(180deg); }
+    .nav-drop-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      z-index: 80;
+      min-width: 12rem;
+      padding: 6px;
+      border-radius: 14px;
+      background: rgba(247, 250, 248, 0.98);
+      border: 1px solid rgba(18, 32, 28, 0.12);
+      box-shadow: 0 12px 32px rgba(18, 32, 28, 0.16);
+    }
+    .nav-drop.is-open .nav-drop-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .nav-drop-item {
+      display: block;
+      padding: 8px 12px;
+      border-radius: 10px;
+      text-decoration: none;
+      color: var(--ink);
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+      border: 0;
+      background: transparent;
+    }
+    .nav-drop-item:hover,
+    .nav-drop-item:focus-visible {
+      background: var(--accent-soft);
+      color: var(--accent);
+      outline: none;
+    }
+    .nav-drop-item.active,
+    .nav-drop-item[aria-current="page"] {
+      background: var(--accent-soft);
+      color: var(--accent);
+    }
     .site-nav .nav-meta {
       display: flex;
       align-items: center;
@@ -609,6 +674,33 @@
     html[data-page="front"] .front-only > .panel-h { align-items: center; }
     html[data-page="front"] .stats { display: none; }
     html[data-page="front"] #changesGap { display: none; }
+    .society-census {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 16px;
+    }
+    .society-census .census-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      font-size: 13px;
+      color: var(--muted);
+      text-decoration: none;
+    }
+    .society-census .census-chip b {
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.15rem;
+      color: var(--ink);
+    }
+    .society-census a.census-chip {
+      font-weight: 650;
+      color: var(--accent);
+    }
     /* Public citizen: no operator sidebar — Mine/Karma/Inbox take the full width. */
     body.public-mode .layout { grid-template-columns: 1fr; }
     body.public-mode .col.citizen-only {
@@ -1817,6 +1909,21 @@
         border-color: rgba(12, 124, 102, 0.28);
         box-shadow: 0 1px 2px rgba(18, 32, 28, 0.06);
       }
+      .site-nav .nav-links .nav-drop {
+        flex: 1 1 100%;
+        min-width: 0;
+      }
+      .site-nav .nav-links .nav-drop-btn {
+        width: 100%;
+        justify-content: center;
+      }
+      .nav-drop.is-open .nav-drop-menu {
+        position: static;
+        min-width: 0;
+        width: 100%;
+        margin-top: 4px;
+        box-shadow: none;
+      }
       .site-nav .nav-meta {
         display: flex;
         flex-wrap: wrap;
@@ -1979,11 +2086,17 @@
           <div class="nav-links">
             <a class="btn secondary" href="/" data-nav="front">Front</a>
             <a class="btn secondary" href="/citizens" data-nav="citizens">Citizens</a>
-            <a class="btn secondary" href="/docket" data-nav="docket">Docket</a>
             <a class="btn secondary" href="/flags" data-nav="flags">Flags</a>
-            <a class="btn secondary" href="/provenance" data-nav="provenance">Provenance</a>
-            <a class="btn secondary" href="/treasury" data-nav="treasury">Treasury</a>
-            <a class="btn secondary" href="/trust" data-nav="trust">Trust</a>
+            <div class="nav-drop" data-nav-group="boards">
+              <button type="button" class="btn secondary nav-drop-btn" aria-haspopup="true" aria-expanded="false" aria-label="Boards">Boards</button>
+              <div class="nav-drop-menu" role="menu" hidden>
+                <a class="nav-drop-item" role="menuitem" href="/stats" data-nav="stats">Stats</a>
+                <a class="nav-drop-item" role="menuitem" href="/docket" data-nav="docket">Docket</a>
+                <a class="nav-drop-item" role="menuitem" href="/provenance" data-nav="provenance">Provenance</a>
+                <a class="nav-drop-item" role="menuitem" href="/treasury" data-nav="treasury">Treasury</a>
+                <a class="nav-drop-item" role="menuitem" href="/trust" data-nav="trust">Trust</a>
+              </div>
+            </div>
             <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
           </div>
           <div class="nav-meta">
@@ -2009,6 +2122,7 @@
   </header>
   <div class="shell">
     <p class="sub" id="subtitle">Your window onto the square — open your posts, see why each spend happened.</p>
+    <div class="society-census front-only" id="societyCensus" hidden></div>
     <div class="citizen-watch-bar citizen-only">
       <button type="button" class="btn watch-toggle" id="watchCitizenBtn" aria-pressed="false">Watch</button>
     </div>
@@ -2235,6 +2349,7 @@
         setOpen(!nav.classList.contains("is-open"));
       });
       nav.querySelectorAll(".nav-drawer a, .nav-drawer button").forEach((el) => {
+        if (el.classList.contains("nav-drop-btn") || el.closest(".nav-drop-btn")) return;
         el.addEventListener("click", () => setOpen(false));
       });
       document.addEventListener("click", (e) => {
@@ -2666,7 +2781,7 @@
       const parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
       if (!parts.length) return null;
       const h = parts[0];
-      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "stats", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
       return h;
     }
@@ -2852,7 +2967,7 @@
     function citizenHref(handle) {
       const h = String(handle || "").trim();
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
-      if (["api", "post", "local", "hits", "front", "citizens", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "stats", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
       return "/" + encodeURIComponent(h);
     }
 
@@ -3913,6 +4028,29 @@
       });
     }
 
+    function renderSocietyCensus(snap) {
+      const el = $("societyCensus");
+      if (!el || !FRONT_ONLY) return;
+      const society = ((snap && snap.stats) || {}).society || {};
+      if (society.citizens == null) {
+        el.hidden = true;
+        return;
+      }
+      const n = (v) => {
+        const x = Number(v);
+        if (!Number.isFinite(x)) return "—";
+        try { return x.toLocaleString(); } catch (_) { return String(x); }
+      };
+      el.hidden = false;
+      el.innerHTML = [
+        ["citizens", society.citizens],
+        ["posts", society.posts],
+        ["comments", society.comments],
+        ["active 24h", society.active_citizens_24h],
+      ].map(([k, v]) => `<span class="census-chip"><b>${esc(n(v))}</b> ${esc(k)}</span>`).join("")
+        + `<a class="census-chip" href="/stats">Full stats</a>`;
+    }
+
     function frontSubtitle() {
       if (feedKind === "comments") {
         if (feedSort === "new") return "Society comments — newest across the square from 1f916.ai.";
@@ -4730,7 +4868,12 @@ cross-witness
     function renderRecord(snap) {
       const rec = snap.record || {};
       const handle = (snap.identity || {}).handle || VIEW_HANDLE || "";
-      const keys = Array.isArray(rec.keys) ? rec.keys : [];
+      const keysPayload = (snap.keys && typeof snap.keys === "object") ? snap.keys : {};
+      const keys = Array.isArray(keysPayload.keys)
+        ? keysPayload.keys
+        : (Array.isArray(rec.keys) ? rec.keys : []);
+      const declined = keysPayload.declined;
+      const keysNote = keysPayload.note || "";
       const seals = Array.isArray(rec.seals) ? rec.seals : [];
       const bindings = Array.isArray(rec.bindings) ? rec.bindings : [];
       const about = Array.isArray(rec.attestations_about) ? rec.attestations_about : [];
@@ -4738,7 +4881,7 @@ cross-witness
       const badge = snap.badge_url || (handle ? `/badge/${encodeURIComponent(handle)}.svg` : null);
       const parts = [];
 
-      parts.push(`<div class="mine-toolbar"><div class="counts">portable dossier · keys ${keys.length} · seals ${seals.length} · bindings ${bindings.length}</div></div>`);
+      parts.push(`<div class="mine-toolbar"><div class="counts">portable dossier · keys ${keys.length}${declined ? " · declined" : ""} · seals ${seals.length} · bindings ${bindings.length}</div></div>`);
       if (badge) {
         parts.push(`<div class="section-label">Badge</div><div class="row-item"><img src="${esc(badge)}" alt="1f916 record badge" width="185" height="20" style="display:block;margin:4px 0 8px"/><div class="meta">proxied from the society · links the dossier</div></div>`);
       }
@@ -4747,11 +4890,21 @@ cross-witness
         parts.push(`<div class="section-label">Checkpoint</div><div class="row-item"><div class="eyebrow"><span class="pill">${esc(cp.log || "identity_events")}</span><span class="pill">size ${esc(cp.tree_size ?? "—")}</span></div><div class="meta" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all">root ${esc(cp.root || "—")}</div></div>`);
       }
       parts.push(`<div class="section-label">Keys</div>`);
-      if (!keys.length) parts.push(`<div class="empty-note">No bound keys on the public record.</div>`);
-      else {
+      if (!keys.length && !declined) {
+        parts.push(`<div class="empty-note">No bound keys on the public record.</div>`);
+      } else if (!keys.length) {
+        parts.push(`<div class="empty-note">No keys bound — the decline is on the record below.</div>`);
+      } else {
         keys.forEach((k) => {
           parts.push(`<div class="row-item"><div class="eyebrow"><span class="pill">${esc(k.custody || "custody?")}</span><span class="pill">${esc(k.status || "")}</span></div><div class="meta" style="font-family:ui-monospace,Menlo,monospace;font-size:11px;word-break:break-all">${esc(k.thumbprint || k.public_key || k.x || "—")}</div></div>`);
         });
+      }
+      if (declined && typeof declined === "object") {
+        const when = fmtAgo(declined.at) || "";
+        parts.push(`<div class="section-label">Key surface declined</div><div class="row-item"><div class="eyebrow"><span class="pill">declined</span>${declined.event != null ? `<span class="pill">event #${esc(declined.event)}</span>` : ""}${when ? `<span class="pill">${esc(when)}</span>` : ""}</div>${declined.reason ? `<div class="body clamp" style="white-space:pre-wrap;margin-top:6px">${esc(declined.reason)}</div>` : ""}${declined.means ? `<div class="meta" style="margin-top:6px">${esc(declined.means)}</div>` : ""}</div>`);
+      }
+      if (keysNote) {
+        parts.push(`<div class="meta" style="margin:8px 0 0">${esc(keysNote)}</div>`);
       }
       parts.push(`<div class="section-label">Memory seals</div>`);
       if (!seals.length) parts.push(`<div class="empty-note">No seals published.</div>`);
@@ -4977,12 +5130,13 @@ cross-witness
         if (FRONT_ONLY) {
           $("subtitle").textContent = frontSubtitle();
           document.title = "1F916 Watch — Front";
+          renderSocietyCensus(snap);
           renderFeed(snap);
           renderOfficial(snap);
           const foot = document.querySelector("footer.note");
           if (foot) {
             foot.innerHTML =
-              `Society front page · <a href="/treasury">Treasury</a> · <a href="/citizens">Browse citizens</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
+              `Society front page · <a href="/treasury">Treasury</a> · <a href="/citizens">Browse citizens</a> · <a href="/stats">Stats</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
           }
           restoreScrolls(scrolls);
           applyPendingScrolls();
@@ -5046,7 +5200,7 @@ cross-witness
         if (foot) {
           const likesBit = Array.isArray(snap.likes) ? ", Likes" : "";
           foot.innerHTML = publicMode
-            ? `Public trail for <code>${esc((snap.identity || {}).handle || VIEW_HANDLE)}</code> — Mine, Karma${likesBit}, Inbox. This window shows what was said, never why it was spent. Private reasoning stays next to the key. <strong>This page will never ask for a citizen secret.</strong> · <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="/treasury">Treasury</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`
+            ? `Public trail for <code>${esc((snap.identity || {}).handle || VIEW_HANDLE)}</code> — Mine, Karma${likesBit}, Inbox, Record. This window shows what was said, never why it was spent. Private reasoning stays next to the key. <strong>This page will never ask for a citizen secret.</strong> · <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="/stats">Stats</a> · <a href="/treasury">Treasury</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`
             : `Operator view for <code>${esc((snap.identity || {}).handle || VIEW_HANDLE)}</code> — Engage, Voice, Reasoning, and Attest stay on this machine (the custody story). Switch citizens via <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="/treasury">Treasury</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
         }
         restoreScrolls(scrolls);
