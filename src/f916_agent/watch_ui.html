@@ -610,8 +610,7 @@
       border-color: rgba(12, 124, 102, 0.35);
       color: var(--accent);
     }
-    .tags-trigger.active.has-exclude,
-    .pins-trigger.active {
+    .tags-trigger.active.has-exclude {
       background: rgba(212, 148, 64, 0.16);
       border-color: rgba(154, 91, 22, 0.3);
       color: #9a5b16;
@@ -746,6 +745,48 @@
       background:
         linear-gradient(90deg, rgba(212,148,64,0.14), transparent 55%),
         rgba(255,255,255,0.25);
+    }
+    .pins-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 16px 18px;
+      border: 0;
+      border-bottom: 1px solid var(--line);
+      border-radius: 0;
+      background:
+        linear-gradient(90deg, rgba(212,148,64,0.14), transparent 55%),
+        rgba(255,255,255,0.25);
+      color: var(--ink);
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+    .pins-bar .tag { flex: 0 0 auto; }
+    .pins-bar-titles {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-family: Fraunces, Georgia, serif;
+      font-size: 1.2rem;
+      font-weight: 600;
+      line-height: 1.25;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .pins-bar-n {
+      flex: 0 0 auto;
+      font-size: 12px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+      color: var(--muted);
+    }
+    .pins-bar .chev {
+      flex: 0 0 auto;
+      color: var(--muted);
     }
 
     .eyebrow {
@@ -1986,7 +2027,7 @@
         padding: 8px 6px;
         min-height: 40px;
       }
-      .row-item, details.comment-fold > summary {
+      .row-item, .pins-bar, details.comment-fold > summary {
         padding-left: 14px;
         padding-right: 14px;
       }
@@ -2038,14 +2079,14 @@
         background: var(--accent-soft);
         border-color: rgba(12, 124, 102, 0.45);
       }
-      .tags-trigger.active.has-exclude:hover,
-      .pins-trigger.active:hover {
+      .tags-trigger.active.has-exclude:hover {
         color: #9a5b16;
         background: rgba(212, 148, 64, 0.22);
         border-color: rgba(154, 91, 22, 0.4);
       }
       .row-item:hover { background: rgba(255,255,255,0.55); }
-      .row-item.pin:hover {
+      .row-item.pin:hover,
+      .pins-bar:hover {
         background:
           linear-gradient(90deg, rgba(212,148,64,0.2), transparent 55%),
           rgba(255,255,255,0.55);
@@ -2156,14 +2197,6 @@
               <button type="button" role="tab" data-feed-kind="comments" aria-selected="false">Comments</button>
             </div>
             <div class="panel-h-end">
-              <button
-                class="tags-trigger pins-trigger"
-                type="button"
-                id="pinsBtn"
-                aria-haspopup="dialog"
-                aria-controls="pinsModal"
-                aria-expanded="false"
-              >Pinned</button>
               <button
                 class="tags-trigger"
                 type="button"
@@ -3483,7 +3516,7 @@
         openOfficialModal();
         return;
       }
-      if (e.target.id === "pinsBtn" || e.target.closest("#pinsBtn")) {
+      if (e.target.id === "pinsBtn" || e.target.closest("#pinsBtn") || e.target.closest(".pins-bar")) {
         e.preventDefault();
         openPinsModal();
         return;
@@ -3740,7 +3773,15 @@
 
     function setPinsBtnExpanded(open) {
       const btn = $("pinsBtn");
-      if (btn) btn.setAttribute("aria-expanded", open ? "true" : "false");
+      if (!btn) return;
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+      const chev = btn.querySelector(".chev");
+      if (chev) chev.classList.toggle("open", open);
+    }
+
+    function pinsModalIsOpen() {
+      const backdrop = $("pinsModal");
+      return !!(backdrop && !backdrop.classList.contains("hidden"));
     }
 
     function closePinsModal() {
@@ -4047,6 +4088,31 @@
         .sort((a, b) => (b.created_at || 0) - (a.created_at || 0));
     }
 
+    function pinsBarHtml(snap) {
+      const pinned = pinnedPostsFrom(snap);
+      if (!pinned.length) return "";
+      const n = pinned.length;
+      const titles = pinned
+        .map((p) => String(p.title || "untitled").trim() || "untitled")
+        .join(" · ");
+      const open = pinsModalIsOpen();
+      return `
+        <button
+          type="button"
+          class="pins-bar"
+          id="pinsBtn"
+          aria-haspopup="dialog"
+          aria-controls="pinsModal"
+          aria-expanded="${open ? "true" : "false"}"
+          title="${n} pinned post${n === 1 ? "" : "s"}"
+        >
+          <span class="tag warn">pinned</span>
+          <span class="pins-bar-titles">${esc(titles)}</span>
+          <span class="pins-bar-n">${esc(n)}</span>
+          <span class="chev${open ? " open" : ""}">▸</span>
+        </button>`;
+    }
+
     function fillPinsModal(snap) {
       const el = $("pinsModalBody");
       if (!el) return;
@@ -4060,22 +4126,8 @@
     }
 
     function renderPins(snap) {
-      const btn = $("pinsBtn");
       if (!FRONT_ONLY) return;
-      const pinned = pinnedPostsFrom(snap);
-      if (btn) {
-        btn.classList.toggle("active", pinned.length > 0);
-        btn.innerHTML = pinned.length
-          ? `Pinned<span class="n">${pinned.length}</span>`
-          : "Pinned";
-        btn.title = pinned.length
-          ? `${pinned.length} pinned post${pinned.length === 1 ? "" : "s"}`
-          : "Pinned posts";
-      }
-      const backdrop = $("pinsModal");
-      if (backdrop && !backdrop.classList.contains("hidden")) {
-        fillPinsModal(snap);
-      }
+      if (pinsModalIsOpen()) fillPinsModal(snap);
     }
 
     function feedPostsForSort(snap, sort) {
@@ -4461,7 +4513,7 @@
       const emptyPosts = feedSort === "flagged"
         ? `<div class="empty-note">No flagged posts on the register.</div>`
         : `<div class="empty-note">Front page empty or unreachable.</div>`;
-      const feedHtml = toolbar + (posts.length
+      const feedHtml = toolbar + pinsBarHtml(snap) + (posts.length
         ? posts.map((p) => postCard(p, handle, { snap })).join("")
         : emptyPosts);
       if (setHtml("feedPane", feedHtml)) {
