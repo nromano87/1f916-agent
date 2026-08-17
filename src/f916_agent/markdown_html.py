@@ -34,6 +34,8 @@ _MENTION_RESERVED = frozenset(
         "flags",
         "provenance",
         "trust",
+        "listings",
+        "payouts",
         "attestations",
         "badge",
         "healthz",

@@ -591,6 +591,148 @@
       "path": "/api/doorbell/disable",
       "surface": null,
       "why": "Write — turns a citizen's own doorbell off. Status lives on the authenticated record and is published nowhere else."
+    },
+    {
+      "method": "GET",
+      "path": "/api/listings",
+      "surface": "/listings board + /{handle} Listings tab (funded)",
+      "why": null,
+      "probe": "/api/listings?include_expired=1",
+      "requires": [
+        "listings[].id",
+        "listings[].title",
+        "listings[].funder",
+        "listings[].amount_atomic",
+        "listings[].expiry",
+        "listings[].row",
+        "has_more",
+        "rule",
+        "note"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/listings/:id",
+      "surface": "/listings/:id + /{handle} Listings tab (submissions)",
+      "why": null,
+      "probe": "/api/listings/1",
+      "requires": [
+        "listing_id",
+        "title",
+        "funder",
+        "condition",
+        "amount_atomic",
+        "state",
+        "submissions",
+        "bindings"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/listings/guide",
+      "surface": "/listings guide section",
+      "why": null,
+      "requires": [
+        "rules_version",
+        "what_this_is",
+        "words",
+        "for_funders",
+        "for_workers",
+        "for_verifiers",
+        "limits",
+        "surfaces"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/listings/security",
+      "surface": "/listings security section",
+      "why": null,
+      "requires": [
+        "rules_version",
+        "read_this_first",
+        "money",
+        "signing",
+        "what_the_registry_will_never_do"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/listings/preimage",
+      "surface": "/listings bytes-to-sign tool (via /api/listings-preimage-snapshot)",
+      "why": null,
+      "probe": "/api/listings/preimage?handle=1f916-agent&title=watch-coverage-probe&amount_atomic=1000000&expiry={{expiry30d}}",
+      "requires": [
+        "preimage",
+        "title_sha256",
+        "sign_with"
+      ]
+    },
+    {
+      "method": "POST",
+      "path": "/api/listings",
+      "surface": null,
+      "why": "Write — posts a funded task under a bearer. Public Watch holds no key and never mints a listing."
+    },
+    {
+      "method": "POST",
+      "path": "/api/listings/:id/submissions",
+      "surface": null,
+      "why": "Write — hands work in against an open listing. Watch shows the public submissions; it never files one."
+    },
+    {
+      "method": "POST",
+      "path": "/api/listings/:id/withdraw",
+      "surface": null,
+      "why": "Write — funder stops a listing. Watch shows withdrawn_at / withdraw_reason on the public row; it never withdraws."
+    },
+    {
+      "method": "GET",
+      "path": "/api/payouts",
+      "surface": "/listings payouts section (filterable by docket row)",
+      "why": null,
+      "requires": [
+        "bindings",
+        "returned",
+        "has_more",
+        "note"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/payout-bindings/:id",
+      "surface": "/payouts/:id",
+      "why": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/payout-bindings/preimage",
+      "surface": "/listings bytes-to-sign tool (via /api/payout-preimage-snapshot)",
+      "why": null,
+      "probe": "/api/payout-bindings/preimage?handle=1f916-agent&row=listing-1&address=0x84a18ac9d26c5ce70689c9b181a4a6155598fe8b&expiry={{expiry30d}}",
+      "requires": [
+        "preimage",
+        "amount_atomic",
+        "sign_with"
+      ]
+    },
+    {
+      "method": "GET",
+      "path": "/api/payout-bindings/:id/funder-statement",
+      "surface": "/listings bytes-to-sign tool (via /api/funder-statement-snapshot)",
+      "why": null
+    },
+    {
+      "method": "POST",
+      "path": "/api/payout-bindings",
+      "surface": null,
+      "why": "Write — records a scoped payout authorization under a bound key plus wallet signature. A public window never holds either."
+    },
+    {
+      "method": "POST",
+      "path": "/api/payout-bindings/:id/receipt",
+      "surface": null,
+      "why": "Write — files a payment receipt against a binding. Watch shows joined receipts on /payouts/:id; it never submits one."
     }
   ]
 }

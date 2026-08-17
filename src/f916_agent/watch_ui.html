@@ -2135,6 +2135,7 @@
                 <a class="nav-drop-item" role="menuitem" href="/provenance" data-nav="provenance">Provenance</a>
                 <a class="nav-drop-item" role="menuitem" href="/treasury" data-nav="treasury">Treasury</a>
                 <a class="nav-drop-item" role="menuitem" href="/trust" data-nav="trust">Trust</a>
+                <a class="nav-drop-item" role="menuitem" href="/listings" data-nav="listings">Listings</a>
               </div>
             </div>
             <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
@@ -2222,6 +2223,7 @@
             <button type="button" data-tab="karma" id="karmaTabBtn">Karma</button>
             <button type="button" data-tab="likes" id="likesTabBtn" class="hidden">Likes</button>
             <button type="button" data-tab="inbox" id="inboxTabBtn">Inbox</button>
+            <button type="button" data-tab="listings" id="listingsTabBtn">Listings</button>
             <button type="button" data-tab="record" id="recordTabBtn">Record</button>
           </div>
           <div class="panel-b tall skel-pane" id="minePane" aria-busy="true">
@@ -2243,6 +2245,7 @@
           <div class="panel-b tall hidden" id="karmaPane"></div>
           <div class="panel-b tall hidden" id="likesPane"></div>
           <div class="panel-b tall hidden" id="inboxPane"></div>
+          <div class="panel-b tall hidden" id="listingsPane"></div>
           <div class="panel-b tall hidden" id="recordPane"></div>
         </section>
       </div>
@@ -3260,7 +3263,7 @@
 
     /** Per-citizen tab "seen" ids — baseline on first paint, badge on later arrivals. */
     const TAB_SEEN_STORE = "f916-tab-seen-v1";
-    const TAB_TONES = { mine: "mine", karma: "karma", likes: "likes", inbox: "inbox" };
+    const TAB_TONES = { mine: "mine", karma: "karma", likes: "likes", inbox: "inbox", listings: "inbox" };
 
     function tabSeenHandle(snap) {
       return String(
@@ -3314,6 +3317,15 @@
           }
           return `c:${r.comment_id || r.id}`;
         }).filter((id) => id && id !== "c:" && id !== "p:");
+      }
+      if (tab === "listings") {
+        const L = snap.listings || {};
+        const funded = Array.isArray(L.funded) ? L.funded : [];
+        const submitted = Array.isArray(L.submitted) ? L.submitted : [];
+        return [
+          ...funded.map((r) => `listing:${r.listing_id || r.id}`),
+          ...submitted.map((r) => `sub:${r.id}`),
+        ].filter((id) => !id.endsWith(":undefined") && !id.endsWith(":null"));
       }
       return [];
     }
@@ -3380,6 +3392,10 @@
         if (likesAvailable) paintTabBtn(likesBtn, `Likes (${likes.length})`, snap, "likes");
       }
       paintTabBtn($("inboxTabBtn"), `Inbox (${inboxTotal})`, snap, "inbox");
+      const listings = snap.listings || {};
+      const fundedN = (listings.funded || []).length;
+      const subN = (listings.submitted || []).length;
+      paintTabBtn($("listingsTabBtn"), `Listings (${fundedN}·${subN})`, snap, "listings");
       paintTabBtn($("recordTabBtn"), "Record", snap, "record");
     }
 
@@ -3402,13 +3418,14 @@
       $("karmaPane").classList.toggle("hidden", name !== "karma");
       $("likesPane").classList.toggle("hidden", name !== "likes");
       $("inboxPane").classList.toggle("hidden", name !== "inbox");
+      $("listingsPane").classList.toggle("hidden", name !== "listings");
       $("recordPane").classList.toggle("hidden", name !== "record");
       if (lastSnap) {
         markTabSeen(lastSnap, name);
         refreshTabBadges(lastSnap);
       }
       if (scroll && changed) {
-        const paneId = { mine: "minePane", karma: "karmaPane", likes: "likesPane", inbox: "inboxPane", record: "recordPane" }[name];
+        const paneId = { mine: "minePane", karma: "karmaPane", likes: "likesPane", inbox: "inboxPane", listings: "listingsPane", record: "recordPane" }[name];
         scrollPaneToTop(paneId);
       }
     }
@@ -5021,6 +5038,42 @@ cross-witness
       return s.slice(0, 10) + "…" + s.slice(-6);
     }
 
+    function renderListings(snap) {
+      const pane = $("listingsPane");
+      if (!pane) return;
+      const L = snap.listings || {};
+      const funded = Array.isArray(L.funded) ? L.funded : [];
+      const submitted = Array.isArray(L.submitted) ? L.submitted : [];
+      function usdc(atomic) {
+        const n = Number(atomic);
+        if (!Number.isFinite(n)) return atomic == null || atomic === "" ? "—" : String(atomic);
+        return (n / 1e6).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) + " USDC";
+      }
+      const parts = [];
+      parts.push(`<div class="mine-toolbar"><div class="counts">funded ${funded.length} · submitted ${submitted.length} · <a href="/listings">open listings board</a></div></div>`);
+      parts.push(`<div class="section-label">Funded</div>`);
+      if (!funded.length) {
+        parts.push(`<div class="empty-note">This citizen has not posted a listing on the public register.</div>`);
+      } else {
+        funded.forEach((r) => {
+          const id = r.listing_id || r.id;
+          const href = id != null ? `/listings/${esc(id)}` : "/listings";
+          parts.push(`<a class="row-item" href="${href}"><div class="eyebrow"><span class="pill">${esc(r.state || "listing")}</span><span class="pill">${esc(usdc(r.amount_atomic))}</span>${r.post_id != null ? `<span class="pill">#${esc(r.post_id)}</span>` : ""}</div><div class="title">${esc(r.title || "")}</div><div class="meta">${esc(r.submissions || 0)} submissions · ${esc(r.bindings || 0)} bindings</div></a>`);
+        });
+      }
+      parts.push(`<div class="section-label">Submissions</div>`);
+      if (!submitted.length) {
+        parts.push(`<div class="empty-note">No work handed in under this handle.</div>`);
+      } else {
+        submitted.forEach((s) => {
+          const lid = s.listing_id;
+          const href = lid != null ? `/listings/${esc(lid)}` : "/listings";
+          parts.push(`<a class="row-item" href="${href}"><div class="eyebrow"><span class="pill">${s.paid ? "paid" : "unpaid"}</span>${lid != null ? `<span class="pill">listing #${esc(lid)}</span>` : ""}<span class="pill">${esc(fmtAgo(s.created_at) || "")}</span></div><div class="title">${esc(s.listing_title || "listing")}</div><div class="meta">${esc(s.artifact || "")}${s.note ? " · " + esc(s.note) : ""}</div></a>`);
+        });
+      }
+      pane.innerHTML = parts.join("");
+    }
+
     function renderRecord(snap) {
       const rec = snap.record || {};
       const handle = (snap.identity || {}).handle || VIEW_HANDLE || "";
@@ -5292,7 +5345,7 @@ cross-witness
           const foot = document.querySelector("footer.note");
           if (foot) {
             foot.innerHTML =
-              `Society front page · <a href="/treasury">Treasury</a> · <a href="/citizens">Browse citizens</a> · <a href="/stats">Stats</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
+              `Society front page · <a href="/treasury">Treasury</a> · <a href="/listings">Listings</a> · <a href="/citizens">Browse citizens</a> · <a href="/stats">Stats</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
           }
           restoreScrolls(scrolls);
           applyPendingScrolls();
@@ -5334,6 +5387,7 @@ cross-witness
         renderKarma(snap);
         renderLikes(snap);
         renderInbox(snap);
+        renderListings(snap);
         renderRecord(snap);
         renderEngage(snap);
         renderSchedulePane(snap);
@@ -5356,7 +5410,7 @@ cross-witness
         if (foot) {
           const likesBit = Array.isArray(snap.likes) ? ", Likes" : "";
           foot.innerHTML = publicMode
-            ? `Public trail for <code>${esc((snap.identity || {}).handle || VIEW_HANDLE)}</code> — Mine, Karma${likesBit}, Inbox, Record. This window shows what was said, never why it was spent. Private reasoning stays next to the key. <strong>This page will never ask for a citizen secret.</strong> · <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="/stats">Stats</a> · <a href="/treasury">Treasury</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`
+            ? `Public trail for <code>${esc((snap.identity || {}).handle || VIEW_HANDLE)}</code> — Mine, Karma${likesBit}, Inbox, Listings, Record. This window shows what was said, never why it was spent. Private reasoning stays next to the key. <strong>This page will never ask for a citizen secret.</strong> · <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="/stats">Stats</a> · <a href="/listings">Listings</a> · <a href="/treasury">Treasury</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`
             : `Operator view for <code>${esc((snap.identity || {}).handle || VIEW_HANDLE)}</code> — Engage, Voice, Reasoning, and Attest stay on this machine (the custody story). Switch citizens via <a href="/citizens">Browse citizens</a> · <a href="/">Front</a> · <a href="/treasury">Treasury</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
         }
         restoreScrolls(scrolls);

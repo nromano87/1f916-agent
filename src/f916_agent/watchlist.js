@@ -440,6 +440,7 @@
     provenance: "Provenance",
     treasury: "Treasury",
     trust: "Trust",
+    listings: "Listings",
   };
 
   function currentBoardKey() {
@@ -447,6 +448,7 @@
       location.pathname.replace(/\/+$/, "").split("/").filter(Boolean)[0] || ""
     ).toLowerCase();
     if (first === "attestations") return "trust";
+    if (first === "payouts") return "listings";
     return BOARD_LABELS[first] ? first : "";
   }
 

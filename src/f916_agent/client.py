@@ -134,6 +134,116 @@ class Client:
         """GET /api/docket — platform asks with status and source threads."""
         return self.request("GET", "/api/docket")
 
+    def listings(
+        self,
+        *,
+        include_expired: bool = False,
+        since: Optional[int] = None,
+    ) -> Any:
+        """GET /api/listings — open (or whole) task register."""
+        query: Dict[str, Any] = {}
+        if include_expired:
+            query["include_expired"] = 1
+        if since is not None:
+            query["since"] = int(since)
+        return self.request("GET", "/api/listings", query=query or None)
+
+    def listing(self, listing_id: int) -> Any:
+        """GET /api/listings/:id — one listing plus submissions and bindings."""
+        return self.request("GET", "/api/listings/{}".format(int(listing_id)))
+
+    def listings_guide(self) -> Any:
+        """GET /api/listings/guide — versioned how-and-why of the payment rail."""
+        return self.request("GET", "/api/listings/guide")
+
+    def listings_security(self) -> Any:
+        """GET /api/listings/security — wallet-safety notes for this rail."""
+        return self.request("GET", "/api/listings/security")
+
+    def listings_preimage(
+        self,
+        *,
+        handle: str,
+        title: str,
+        amount_atomic: str,
+        expiry: int,
+        verifier_price_atomic: Optional[str] = None,
+        max_verifiers: Optional[int] = None,
+    ) -> Any:
+        """GET /api/listings/preimage — exact bytes a funder wallet signs."""
+        query: Dict[str, Any] = {
+            "handle": handle,
+            "title": title,
+            "amount_atomic": amount_atomic,
+            "expiry": int(expiry),
+        }
+        if verifier_price_atomic is not None:
+            query["verifier_price_atomic"] = verifier_price_atomic
+        if max_verifiers is not None:
+            query["max_verifiers"] = int(max_verifiers)
+        return self.request("GET", "/api/listings/preimage", query=query)
+
+    def payouts(
+        self,
+        *,
+        docket: Optional[str] = None,
+        since_id: Optional[int] = None,
+    ) -> Any:
+        """GET /api/payouts — paged payout bindings and receipts."""
+        query: Dict[str, Any] = {}
+        if docket:
+            query["docket"] = docket
+        if since_id is not None:
+            query["since_id"] = int(since_id)
+        return self.request("GET", "/api/payouts", query=query or None)
+
+    def payout_binding(self, binding_id: int) -> Any:
+        """GET /api/payout-bindings/:id — one authorization and optional receipt."""
+        return self.request(
+            "GET", "/api/payout-bindings/{}".format(int(binding_id))
+        )
+
+    def payout_bindings_preimage(
+        self,
+        *,
+        handle: str,
+        row: str,
+        address: str,
+        expiry: int,
+        amount_atomic: Optional[str] = None,
+    ) -> Any:
+        """GET /api/payout-bindings/preimage — exact bytes a payee signs."""
+        query: Dict[str, Any] = {
+            "handle": handle,
+            "row": row,
+            "address": address,
+            "expiry": int(expiry),
+        }
+        if amount_atomic is not None:
+            query["amount_atomic"] = amount_atomic
+        return self.request("GET", "/api/payout-bindings/preimage", query=query)
+
+    def payout_funder_statement(
+        self,
+        binding_id: int,
+        *,
+        tx_hash: str,
+        log_index: int,
+        source_address: str,
+        relationship: str,
+    ) -> Any:
+        """GET /api/payout-bindings/:id/funder-statement — bytes after paying."""
+        return self.request(
+            "GET",
+            "/api/payout-bindings/{}/funder-statement".format(int(binding_id)),
+            query={
+                "tx_hash": tx_hash,
+                "log_index": int(log_index),
+                "source_address": source_address,
+                "relationship": relationship,
+            },
+        )
+
     def flags(self) -> Any:
         """GET /api/flags — flagged targets with maintainer dispositions."""
         return self.request("GET", "/api/flags")

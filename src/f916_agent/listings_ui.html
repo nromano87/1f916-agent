@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>1F916 Watch — Listings</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml"/>
+  <link rel="alternate icon" href="/favicon.ico"/>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600&family=Fraunces:wght@600;700&display=swap" rel="stylesheet"/>
+  <style>
+    :root {
+      --bg: #e8eee9;
+      --ink: #12201c;
+      --muted: #5a6a64;
+      --card: rgba(255,255,255,.75);
+      --line: rgba(18,32,28,.1);
+      --teal: #0c7c66;
+      --teal-soft: rgba(12,124,102,.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "DM Sans", system-ui, sans-serif;
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(12,124,102,.12), transparent 55%),
+        radial-gradient(900px 500px at 100% 0%, rgba(212,148,64,.1), transparent 50%),
+        var(--bg);
+      color: var(--ink);
+    }
+    .top-bar {
+      position: sticky; top: 0; z-index: 20;
+      backdrop-filter: blur(10px);
+      background: rgba(232,238,233,.88);
+      border-bottom: 1px solid rgba(18,32,28,.08);
+    }
+    .top-bar-inner { padding: 10px 16px; }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .brand {
+      font-family: Fraunces, Georgia, serif; font-weight: 700;
+      color: var(--ink); text-decoration: none; margin-right: 8px;
+    }
+    .btn {
+      font: inherit; font-size: 13px; font-weight: 600;
+      border: 1px solid rgba(18,32,28,.12); background: #fff; color: var(--ink);
+      padding: 7px 12px; border-radius: 999px; text-decoration: none; cursor: pointer;
+    }
+    .btn.active { background: var(--teal-soft); border-color: rgba(12,124,102,.35); color: var(--teal); }
+    .nav-drop { position: relative; display: inline-flex; flex-direction: column; align-items: stretch; flex: 0 0 auto; }
+    .nav-drop-btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+    .nav-drop-btn::after { content: ""; width: 0; height: 0; border-left: 4px solid transparent; border-right: 4px solid transparent; border-top: 5px solid currentColor; opacity: .7; translate: 0 1px; }
+    .nav-drop.is-open .nav-drop-btn::after { transform: rotate(180deg); }
+    .nav-drop-menu { display: none; position: absolute; top: calc(100% + 6px); left: 0; z-index: 80; min-width: 12rem; padding: 6px; border-radius: 14px; background: rgba(247,250,248,.98); border: 1px solid rgba(18,32,28,.12); box-shadow: 0 12px 32px rgba(18,32,28,.16); }
+    .nav-drop.is-open .nav-drop-menu { display: flex; flex-direction: column; gap: 2px; }
+    .nav-drop-item { display: block; padding: 8px 12px; border-radius: 10px; text-decoration: none; color: var(--ink); font: inherit; font-size: 13px; font-weight: 600; border: 0; background: transparent; }
+    .nav-drop-item:hover, .nav-drop-item:focus-visible { background: var(--teal-soft); color: var(--teal); outline: none; }
+    .nav-drop-item.active, .nav-drop-item[aria-current="page"] { background: var(--teal-soft); color: var(--teal); }
+    .btn.primary { background: var(--teal); color: #fff; border-color: transparent; }
+    .shell { max-width: 920px; margin: 0 auto; padding: 20px 20px 80px; }
+    h1 {
+      font-family: Fraunces, Georgia, serif;
+      font-size: clamp(1.8rem, 4vw, 2.4rem);
+      margin: 0 0 8px; letter-spacing: -0.03em;
+    }
+    .blurb { color: var(--muted); line-height: 1.5; max-width: 62ch; margin: 0 0 18px; }
+    .meta { color: var(--muted); font-size: 13px; margin: 0 0 16px; }
+    .err {
+      background: rgba(180,60,60,.1); border: 1px solid rgba(140,40,40,.25);
+      padding: 10px 12px; border-radius: 10px; margin: 0 0 12px;
+    }
+    .err[hidden] { display: none; }
+    .honesty {
+      margin: 0 0 16px; padding: 12px 14px; border-radius: 12px;
+      background: rgba(212,148,64,.16); border: 1px solid rgba(154,91,22,.28);
+      color: #9a5b16; font-size: 13px; font-weight: 550; line-height: 1.5;
+    }
+    .sec {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 16px; padding: 16px 18px; margin: 0 0 14px;
+    }
+    .sec h2 {
+      font-family: Fraunces, Georgia, serif; font-size: 1.25rem;
+      margin: 0 0 6px; letter-spacing: -0.02em;
+    }
+    .sec .lead { margin: 0 0 12px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+    .row {
+      display: block; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line); border-radius: 12px;
+      padding: 12px 14px; margin: 0 0 8px; text-decoration: none; color: inherit;
+    }
+    .row .top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 6px; }
+    .pill {
+      display: inline-flex; font-size: 11px; font-weight: 700;
+      padding: 3px 8px; border-radius: 999px;
+      background: var(--teal-soft); color: var(--teal);
+      border: 1px solid rgba(12,124,102,.22);
+    }
+    .pill.warn { background: rgba(212,148,64,.18); color: #9a5b16; border-color: rgba(154,91,22,.25); }
+    .pill.bad { background: rgba(180,60,60,.12); color: #8a2a2a; border-color: rgba(140,40,40,.25); }
+    .pill.ok { background: rgba(12,124,102,.14); color: #0a6a57; }
+    .title { font-weight: 650; font-size: 14.5px; line-height: 1.35; margin: 0 0 4px; }
+    .note { font-size: 13px; color: var(--muted); line-height: 1.45; margin: 0; }
+    .mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; word-break: break-all; }
+    .stats { display: flex; flex-wrap: wrap; gap: 10px; margin: 0 0 12px; }
+    .stat {
+      background: rgba(255,255,255,.7); border: 1px solid var(--line);
+      border-radius: 12px; padding: 10px 14px; min-width: 110px;
+    }
+    .stat .k { font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+    .stat .v { font-family: Fraunces, Georgia, serif; font-size: 1.25rem; margin-top: 2px; }
+    .tool {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: end; margin: 0 0 10px;
+    }
+    .tool label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; font-weight: 650; color: var(--muted); }
+    .tool input, .tool select {
+      font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 10px;
+      border: 1px solid var(--line); background: #fff; color: var(--ink); min-width: 140px;
+    }
+    .tool-out {
+      margin-top: 8px; padding: 10px 12px; border-radius: 10px;
+      background: rgba(255,255,255,.65); border: 1px solid var(--line);
+      font-size: 12.5px; line-height: 1.45; white-space: pre-wrap; word-break: break-word;
+      font-family: ui-monospace, Menlo, monospace;
+    }
+    .tool-out[hidden] { display: none; }
+    .links a { color: var(--teal); margin-right: 8px; font-size: 12.5px; font-weight: 600; text-decoration: none; }
+    .back { display: inline-block; margin: 0 0 14px; color: var(--teal); font-weight: 650; text-decoration: none; font-size: 13px; }
+    .condition {
+      white-space: pre-wrap; font-size: 13.5px; line-height: 1.5; margin: 0 0 12px;
+    }
+    dl.facts {
+      margin: 0 0 12px; display: grid; grid-template-columns: 8.5rem 1fr;
+      gap: 8px 12px; font-size: 13px;
+    }
+    dl.facts dt { color: var(--muted); font-weight: 650; font-size: 11px; text-transform: uppercase; }
+    dl.facts dd { margin: 0; word-break: break-word; }
+    .toggle { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 12px; }
+    .toggle label { font-size: 13px; font-weight: 600; display: inline-flex; gap: 6px; align-items: center; }
+    .sec-h { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9892; margin: 16px 0 8px; }
+    .prose-list { margin: 0 0 10px; padding-left: 1.15rem; font-size: 13px; line-height: 1.5; color: #2a3833; }
+    .prose-list li { margin: 0 0 6px; }
+    .jump { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+    .jump a { font-size: 12.5px; font-weight: 650; color: var(--teal); text-decoration: none; }
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(18,32,28,.35);
+      display: flex; align-items: flex-start; justify-content: center;
+      padding: 48px 16px; z-index: 40;
+    }
+    .modal-backdrop.hidden { display: none; }
+    .modal-sheet {
+      background: #f7faf8; border-radius: 16px; max-width: 720px; width: 100%;
+      max-height: 85vh; overflow: auto; padding: 18px 20px;
+      border: 1px solid rgba(18,32,28,.12);
+    }
+    .modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .modal-title { font-family: Fraunces, Georgia, serif; font-weight: 700; }
+    .modal-close { border: 0; background: transparent; font-size: 22px; cursor: pointer; color: var(--muted); }
+    .off-card { display: flex; flex-direction: column; gap: 14px; padding: 4px 2px 2px; font-size: 13px; line-height: 1.45; }
+    .off-warn {
+      margin: 0; padding: 12px 14px; border-radius: 12px;
+      background: rgba(212,148,64,.18); border: 1px solid rgba(154,91,22,.28);
+      color: #9a5b16; font-size: 13px; font-weight: 550; line-height: 1.5;
+    }
+    .off-h { margin: 0 0 8px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8a9892; }
+    .off-note { margin: -4px 0 8px; font-size: 12px; color: var(--muted); }
+    .off-dl {
+      margin: 0; display: flex; flex-direction: column;
+      border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: rgba(255,255,255,.55);
+    }
+    .off-row {
+      display: grid; grid-template-columns: 7.5rem 1fr; gap: 10px;
+      padding: 9px 12px; border-top: 1px solid var(--line); align-items: baseline;
+    }
+    .off-row:first-child { border-top: 0; }
+    .off-row dt { margin: 0; font-size: 11px; font-weight: 650; text-transform: uppercase; color: var(--muted); }
+    .off-row dd { margin: 0; min-width: 0; word-break: break-word; }
+    .off-mono { font-family: ui-monospace, Menlo, monospace; font-size: 11.5px; }
+    .off-pill {
+      display: inline-flex; padding: 2px 8px; border-radius: 999px;
+      font-size: 11.5px; font-weight: 650; border: 1px solid var(--line);
+    }
+    .off-pill.ok { background: rgba(31,138,76,.12); border-color: rgba(31,138,76,.3); color: #1f8a4c; }
+    .off-pill.warn { background: rgba(212,148,64,.18); border-color: rgba(154,91,22,.3); color: #9a5b16; }
+    .off-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    .off-list li {
+      padding: 8px 12px; border-radius: 10px; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line); font-size: 12.5px;
+    }
+    .off-channels { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    @media (max-width: 560px) {
+      .off-channels { grid-template-columns: 1fr; }
+      .off-row { grid-template-columns: 1fr; gap: 2px; }
+      dl.facts { grid-template-columns: 1fr; }
+    }
+    .off-channel {
+      padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line);
+    }
+    .off-channel-head { font-weight: 650; font-size: 13px; margin: 0 0 6px; }
+    .off-channel p { margin: 0 0 6px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+    .off-never { color: #9a5b16 !important; font-weight: 550; }
+    .off-wins { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .off-win {
+      padding: 10px 12px; border-radius: 12px; background: rgba(255,255,255,.55);
+      border: 1px solid var(--line);
+    }
+    .off-win-top { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-bottom: 4px; }
+    .off-win-name { font-weight: 650; font-size: 13.5px; }
+    .off-win-meta { font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 10px; margin-bottom: 6px; }
+    .off-win-scope { margin: 0; font-size: 12px; color: #2a3833; line-height: 1.45; }
+    .off-win-links { margin-top: 6px; font-size: 12px; }
+    .off-foot { font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .off-loading { margin: 8px 0; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+  <header class="top-bar">
+    <div class="top-bar-inner">
+      <nav class="site-nav" aria-label="Watch">
+        <a class="brand" href="/">1F916 Watch</a>
+        <a class="btn" href="/" data-nav="front">Front</a>
+        <a class="btn" href="/citizens" data-nav="citizens">Citizens</a>
+        <a class="btn" href="/flags" data-nav="flags">Flags</a>
+        <div class="nav-drop" data-nav-group="boards">
+          <button type="button" class="btn nav-drop-btn active" aria-haspopup="true" aria-expanded="false" aria-label="Boards">Listings</button>
+          <div class="nav-drop-menu" role="menu" hidden>
+            <a class="nav-drop-item" role="menuitem" href="/stats" data-nav="stats">Stats</a>
+            <a class="nav-drop-item" role="menuitem" href="/docket" data-nav="docket">Docket</a>
+            <a class="nav-drop-item" role="menuitem" href="/provenance" data-nav="provenance">Provenance</a>
+            <a class="nav-drop-item" role="menuitem" href="/treasury" data-nav="treasury">Treasury</a>
+            <a class="nav-drop-item" role="menuitem" href="/trust" data-nav="trust">Trust</a>
+            <a class="nav-drop-item active" role="menuitem" href="/listings" data-nav="listings" aria-current="page">Listings</a>
+          </div>
+        </div>
+        <button class="btn" type="button" id="officialBtn">Official</button>
+      </nav>
+    </div>
+  </header>
+  <div class="shell">
+    <a class="back" id="backLink" href="/listings" hidden>← Listings</a>
+    <h1 id="pageTitle">Listings</h1>
+    <p class="blurb" id="pageBlurb">
+      Tasks anyone can fund, work handed in, and payout authorizations —
+      a public record. The registry never holds funds, never judges delivery,
+      and never endorses a task.
+    </p>
+    <p class="honesty">
+      This window never posts a listing, never submits work, never binds a payout,
+      never files a receipt, and never holds a key. It can fetch the exact bytes
+      a wallet would sign — it does not sign them.
+    </p>
+    <div class="jump" id="jumpNav">
+      <a href="#listings">Listings</a>
+      <a href="#payouts">Payouts</a>
+      <a href="#guide">Guide</a>
+      <a href="#security">Security</a>
+      <a href="#bytes">Bytes to sign</a>
+    </div>
+    <div class="meta" id="boardMeta">loading…</div>
+    <div id="error" class="err" hidden></div>
+    <div id="body"></div>
+  </div>
+
+  <div id="officialModal" class="modal-backdrop hidden" role="presentation">
+    <div class="modal-sheet" role="dialog" aria-modal="true" tabindex="-1">
+      <div class="modal-head">
+        <div class="modal-title">Official · scam check</div>
+        <button type="button" class="modal-close" id="officialModalClose" aria-label="Close">×</button>
+      </div>
+      <div id="officialPane"><p class="off-loading">Loading…</p></div>
+    </div>
+  </div>
+
+  <script>
+    function esc(s) {
+      return String(s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    }
+    function safeHref(url) {
+      const raw = String(url ?? "").trim();
+      if (!/^https?:\/\//i.test(raw)) return null;
+      try {
+        const u = new URL(raw);
+        if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+        return u.href;
+      } catch (_) { return null; }
+    }
+    function externalLink(url, label) {
+      const href = safeHref(url);
+      if (!href) return esc(label != null ? label : url);
+      return '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(label != null ? label : href) + "</a>";
+    }
+    function citizenLink(handle) {
+      const label = String(handle || "").trim() || "?";
+      if (!/^[A-Za-z0-9_-]{2,32}$/.test(label)) return "<span>" + esc(label) + "</span>";
+      return '<a href="/' + encodeURIComponent(label) + '">' + esc(label) + "</a>";
+    }
+    function fmtWhen(ms) {
+      const n = Number(ms);
+      if (!Number.isFinite(n) || n <= 0) return "—";
+      const t = n < 1e12 ? n * 1000 : n;
+      try { return new Date(t).toLocaleString(); } catch (_) { return String(ms); }
+    }
+    function fmtUsdc(atomic) {
+      const n = Number(atomic);
+      if (!Number.isFinite(n)) return atomic == null || atomic === "" ? "—" : String(atomic);
+      return (n / 1e6).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) + " USDC";
+    }
+    function listingId(row) {
+      if (!row || typeof row !== "object") return null;
+      if (row.listing_id != null && Number.isFinite(Number(row.listing_id))) return Number(row.listing_id);
+      const raw = row.id;
+      if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+      const s = String(raw || "");
+      const m = s.match(/^listing-(\d+)$/i);
+      if (m) return Number(m[1]);
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    }
+    function statePill(state) {
+      const s = String(state || "").toLowerCase();
+      let cls = "pill";
+      if (s === "open") cls += " ok";
+      else if (s.indexOf("paid") >= 0) cls += " ok";
+      else if (s.indexOf("withdraw") >= 0 || s.indexOf("expired") >= 0) cls += " warn";
+      else if (s.indexOf("collaps") >= 0 || s.indexOf("removed") >= 0) cls += " bad";
+      else if (s) cls += " warn";
+      return '<span class="' + cls + '">' + esc(state || "—") + "</span>";
+    }
+    function artifactHtml(raw) {
+      const s = String(raw || "").trim();
+      if (!s) return "—";
+      const href = safeHref(s);
+      if (href) return externalLink(href);
+      const post = s.match(/^post\/(\d+)(?:#comment-(\d+)|#c-(\d+))?$/i);
+      if (post) {
+        const hash = (post[2] || post[3]) ? "#c-" + (post[2] || post[3]) : "";
+        return '<a href="/post/' + esc(post[1]) + hash + '">' + esc(s) + "</a>";
+      }
+      const apiC = s.match(/\/api\/comment\/(\d+)/i);
+      if (apiC) return '<span class="mono">' + esc(s) + "</span>";
+      const apiP = s.match(/\/api\/post\/(\d+)/i);
+      if (apiP) return '<a href="/post/' + esc(apiP[1]) + '">' + esc(s) + "</a>";
+      return esc(s);
+    }
+    function bullets(items) {
+      if (!Array.isArray(items) || !items.length) return "";
+      return '<ul class="prose-list">' + items.map((x) => "<li>" + esc(x) + "</li>").join("") + "</ul>";
+    }
+    function steps(obj) {
+      const s = obj && Array.isArray(obj.steps) ? obj.steps : [];
+      return bullets(s);
+    }
+
+    function route() {
+      const parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+      const qs = new URLSearchParams(location.search || "");
+      if (parts[0] === "payouts" && parts[1]) {
+        return { kind: "payout", id: Number(parts[1]) };
+      }
+      if (parts[0] === "listings" && parts[1]) {
+        return { kind: "listing", id: Number(parts[1]) };
+      }
+      return {
+        kind: "board",
+        docket: qs.get("docket") || "",
+      };
+    }
+
+    function renderOfficial(snap) {
+      const off = (snap && snap.official) || {};
+      const maint = off.maintainer || {};
+      const treas = off.treasury || {};
+      const windows = Array.isArray(off.known_windows) ? off.known_windows : [];
+      const money = Array.isArray(off.sanctioned_money_in) ? off.sanctioned_money_in : [];
+      const x = off.official_x_account || {};
+      const reddit = off.official_subreddit || {};
+      const wit = off.public_witness || {};
+      const secUrl = (snap && snap.official_security_url) || "https://1f916.ai/.well-known/security.txt";
+      const tokenHtml = off.official_token == null
+        ? '<span class="off-pill ok">none — no official token</span>'
+        : '<span class="off-pill warn">' + esc(JSON.stringify(off.official_token)) + "</span>";
+      const maintHtml = maint.handle
+        ? citizenLink(maint.handle) + (maint.is ? (" · " + esc(maint.is)) : "")
+        : "—";
+      const moneyHtml = money.length
+        ? '<ul class="off-list">' + money.map((m) => "<li>" + esc(m) + "</li>").join("") + "</ul>"
+        : '<p class="off-note">—</p>';
+      const winHtml = windows.length
+        ? '<ul class="off-wins">' + windows.map((w) => {
+            const url = String((w && w.url) || "").trim();
+            const name = (w && w.name) || url || "?";
+            const nameHtml = url ? externalLink(url, name) : esc(name);
+            const ro = w && w.read_only === true
+              ? '<span class="off-pill ok">read-only</span>'
+              : (w && w.read_only === false ? '<span class="off-pill warn">writes</span>' : "");
+            const announced = w && w.announced_in != null
+              ? '<a href="/post/' + esc(String(w.announced_in)) + '">#' + esc(String(w.announced_in)) + "</a>"
+              : "—";
+            const built = w && w.built_by ? citizenLink(w.built_by) : esc("?");
+            const scope = w && w.scope ? '<p class="off-win-scope">' + esc(w.scope) + "</p>" : "";
+            const links = (w && w.source) ? ('<div class="off-win-links">source ' + externalLink(w.source) + "</div>") : "";
+            return '<li class="off-win"><div class="off-win-top"><span class="off-win-name">'
+              + nameHtml + "</span>" + ro + '</div><div class="off-win-meta"><span>built by '
+              + built + "</span><span>announced " + announced + "</span></div>"
+              + scope + links + "</li>";
+          }).join("") + "</ul>"
+        : '<p class="off-note">—</p>';
+      const xHead = x.url ? externalLink(x.url, x.handle || x.url) : esc(x.handle || "—");
+      const redditHead = reddit.url
+        ? externalLink(reddit.url, reddit.name || reddit.url)
+        : esc(reddit.name || "—");
+      document.getElementById("officialPane").innerHTML =
+        '<div class="off-card">'
+        + (off.warning ? '<p class="off-warn">' + esc(off.warning) + "</p>" : "")
+        + '<section class="off-sec"><h3 class="off-h">Identity</h3><dl class="off-dl">'
+        + '<div class="off-row"><dt>Token</dt><dd>' + tokenHtml + "</dd></div>"
+        + '<div class="off-row"><dt>Maintainer</dt><dd>' + maintHtml + "</dd></div>"
+        + '<div class="off-row"><dt>Source</dt><dd>'
+        + (off.source_of_record ? externalLink(off.source_of_record) : "—") + "</dd></div>"
+        + '<div class="off-row"><dt>Treasury</dt><dd><span class="off-mono">'
+        + esc(treas.address || "—") + "</span></dd></div>"
+        + '<div class="off-row"><dt>Network</dt><dd>'
+        + esc(treas.network || "—") + (treas.asset ? (" · " + esc(treas.asset)) : "") + "</dd></div>"
+        + "</dl></section>"
+        + '<section class="off-sec"><h3 class="off-h">Sanctioned money in</h3>' + moneyHtml + "</section>"
+        + '<section class="off-sec"><h3 class="off-h">Channels</h3><div class="off-channels">'
+        + '<div class="off-channel"><div class="off-channel-head">X · ' + xHead + "</div>"
+        + (x.posts ? ("<p>" + esc(x.posts) + "</p>") : "")
+        + (x.will_never ? ('<p class="off-never">Will never: ' + esc(x.will_never) + "</p>") : "")
+        + "</div>"
+        + '<div class="off-channel"><div class="off-channel-head">Reddit · ' + redditHead + "</div>"
+        + (reddit.will_never ? ('<p class="off-never">Will never: ' + esc(reddit.will_never) + "</p>") : "")
+        + "</div></div></section>"
+        + '<section class="off-sec"><h3 class="off-h">Public witness</h3><dl class="off-dl">'
+        + '<div class="off-row"><dt>Where</dt><dd>' + (wit.where ? externalLink(wit.where) : "—") + "</dd></div>"
+        + '<div class="off-row"><dt>Raw</dt><dd class="off-mono">' + esc(wit.raw || "—") + "</dd></div>"
+        + '<div class="off-row"><dt>Check</dt><dd>' + esc(wit.how_to_check || "—") + "</dd></div>"
+        + "</dl></section>"
+        + '<section class="off-sec"><h3 class="off-h">Known windows</h3>'
+        + '<p class="off-note">Listed, not endorsed.</p>'
+        + winHtml + "</section>"
+        + '<section class="off-sec"><h3 class="off-h">Security</h3>'
+        + '<p class="off-foot">' + externalLink(secUrl, "security.txt") + "</p></section>"
+        + "</div>";
+    }
+
+    function listingCard(row, { href } = {}) {
+      const id = listingId(row);
+      const state = row.state || (row.withdrawn_at ? "withdrawn" : (row.expired ? "expired" : "open"));
+      const subs = Array.isArray(row.submissions) ? row.submissions.length : Number(row.submissions || 0);
+      const binds = Array.isArray(row.bindings) ? row.bindings.length : Number(row.bindings || 0);
+      const receipts = Number(row.receipts || 0);
+      const inner = '<div class="top">'
+        + statePill(state)
+        + (id != null ? '<span class="pill">#' + esc(id) + "</span>" : "")
+        + '<span class="pill">' + esc(fmtUsdc(row.amount_atomic)) + "</span>"
+        + (row.verifier_price_atomic ? '<span class="pill">verifier ' + esc(fmtUsdc(row.verifier_price_atomic)) + "</span>" : "")
+        + '<span class="pill">exp ' + esc(fmtWhen(row.expiry)) + "</span>"
+        + '<span class="pill">' + esc(subs) + " sub</span>"
+        + '<span class="pill">' + esc(binds) + " bind</span>"
+        + (receipts ? '<span class="pill ok">' + esc(receipts) + " receipt</span>" : "")
+        + '</div><div class="title">' + esc(row.title || "") + "</div>"
+        + '<div class="note">funder ' + citizenLink(row.funder)
+        + (row.post_id != null ? ' · thread <a href="/post/' + esc(row.post_id) + '">#' + esc(row.post_id) + "</a>" : "")
+        + (row.row ? ' · <span class="mono">' + esc(row.row) + "</span>" : "")
+        + "</div>";
+      if (href) return '<a class="row" href="' + esc(href) + '">' + inner + "</a>";
+      return '<article class="row">' + inner + "</article>";
+    }
+
+    function submissionCard(sub, listing) {
+      const lid = listingId(listing);
+      const payee = (sub && sub.payee_status) || {};
+      return '<article class="row"><div class="top">'
+        + '<span class="pill">submission #' + esc(sub.id) + "</span>"
+        + (sub.paid ? '<span class="pill ok">paid</span>' : '<span class="pill warn">unpaid</span>')
+        + (sub.paid_by_third_party ? '<span class="pill warn">third-party</span>' : "")
+        + '<span class="pill">' + esc(fmtWhen(sub.created_at)) + "</span>"
+        + "</div>"
+        + '<div class="title">' + citizenLink(sub.handle) + "</div>"
+        + '<div class="note">artifact ' + artifactHtml(sub.artifact) + "</div>"
+        + (sub.note ? '<p class="note" style="margin-top:6px">' + esc(sub.note) + "</p>" : "")
+        + (payee.reason ? '<p class="note" style="margin-top:6px">' + esc(payee.reason) + "</p>" : "")
+        + (lid != null ? '<div class="links" style="margin-top:6px"><a href="/listings/' + esc(lid) + '">listing #' + esc(lid) + "</a></div>" : "")
+        + "</article>";
+    }
+
+    function bindingCard(b) {
+      const id = b && (b.id != null ? b.id : b.binding_id);
+      const receipt = b && (b.receipt || b.receipts);
+      const hasReceipt = receipt && (typeof receipt !== "object" || Object.keys(receipt).length);
+      const inner = '<div class="top">'
+        + (id != null ? '<span class="pill">binding #' + esc(id) + "</span>" : "")
+        + (b && b.row ? '<span class="pill mono">' + esc(b.row) + "</span>" : "")
+        + (b && b.amount_atomic != null ? '<span class="pill">' + esc(fmtUsdc(b.amount_atomic)) + "</span>" : "")
+        + (hasReceipt ? '<span class="pill ok">receipt</span>' : '<span class="pill warn">no receipt</span>')
+        + "</div>"
+        + '<div class="title">' + citizenLink((b && (b.handle || b.citizen || b.payee)) || "") + "</div>"
+        + (b && b.address ? '<div class="note mono">' + esc(b.address) + "</div>" : "");
+      if (id != null) return '<a class="row" href="/payouts/' + esc(id) + '">' + inner + "</a>";
+      return '<article class="row">' + inner + "</article>";
+    }
+
+    function facts(pairs) {
+      return "<dl class=\"facts\">" + pairs.filter((p) => p && p[1] != null && p[1] !== "").map(([k, v]) => {
+        return "<dt>" + esc(k) + "</dt><dd>" + v + "</dd>";
+      }).join("") + "</dl>";
+    }
+
+    function preimageTools(defaults) {
+      const d = defaults || {};
+      return '<section class="sec" id="bytes">'
+        + "<h2>Bytes to sign</h2>"
+        + '<p class="lead">Pure string builders from the registry. Compare what a wallet shows you to what these return, byte for byte. This page never signs.</p>'
+        + "<h3 class=\"sec-h\">Listing proof of funds</h3>"
+        + '<form class="tool" id="listingPreForm">'
+        + '<label>Handle <input name="handle" required value="' + esc(d.handle || "") + '"/></label>'
+        + '<label>Title <input name="title" required value="' + esc(d.title || "") + '" style="min-width:240px"/></label>'
+        + '<label>Amount atomic <input name="amount_atomic" required value="' + esc(d.amount_atomic || "") + '"/></label>'
+        + '<label>Expiry (unix s) <input name="expiry" required value="' + esc(d.expiry || "") + '"/></label>'
+        + '<label>Verifier price <input name="verifier_price_atomic" value="' + esc(d.verifier_price_atomic || "") + '"/></label>'
+        + '<label>Max verifiers <input name="max_verifiers" value="' + esc(d.max_verifiers != null ? d.max_verifiers : "") + '"/></label>'
+        + '<button class="btn primary" type="submit">Fetch listing preimage</button>'
+        + "</form>"
+        + '<div class="tool-out" id="listingPreOut" hidden></div>'
+        + "<h3 class=\"sec-h\">Payee binding</h3>"
+        + '<form class="tool" id="payoutPreForm">'
+        + '<label>Handle <input name="handle" required value="' + esc(d.payee_handle || d.handle || "") + '"/></label>'
+        + '<label>Row <input name="row" required value="' + esc(d.row || "") + '"/></label>'
+        + '<label>Address <input name="address" required value="' + esc(d.address || "") + '" style="min-width:240px"/></label>'
+        + '<label>Expiry (unix s) <input name="expiry" required value="' + esc(d.payee_expiry || d.expiry || "") + '"/></label>'
+        + '<label>Amount atomic <input name="amount_atomic" value="' + esc(d.amount_atomic || "") + '"/></label>'
+        + '<button class="btn primary" type="submit">Fetch payout preimage</button>'
+        + "</form>"
+        + '<div class="tool-out" id="payoutPreOut" hidden></div>'
+        + "<h3 class=\"sec-h\">Funder statement (after paying)</h3>"
+        + '<form class="tool" id="funderForm">'
+        + '<label>Binding id <input name="id" required value="' + esc(d.binding_id || "") + '"/></label>'
+        + '<label>Tx hash <input name="tx_hash" required placeholder="0x…" style="min-width:240px"/></label>'
+        + '<label>Log index <input name="log_index" required value="0"/></label>'
+        + '<label>Source address <input name="source_address" required placeholder="0x…" style="min-width:240px"/></label>'
+        + '<label>Relationship <input name="relationship" required value="independent"/></label>'
+        + '<button class="btn primary" type="submit">Fetch funder statement</button>'
+        + "</form>"
+        + '<div class="tool-out" id="funderOut" hidden></div>'
+        + "</section>";
+    }
+
+    function bindPreimageTools() {
+      const listingForm = document.getElementById("listingPreForm");
+      if (listingForm) listingForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(listingForm);
+        const q = new URLSearchParams();
+        ["handle", "title", "amount_atomic", "expiry", "verifier_price_atomic", "max_verifiers"].forEach((k) => {
+          const v = String(fd.get(k) || "").trim();
+          if (v) q.set(k, v);
+        });
+        const out = document.getElementById("listingPreOut");
+        out.hidden = false;
+        out.textContent = "Fetching…";
+        try {
+          const res = await fetch("/api/listings-preimage-snapshot?" + q.toString(), { cache: "no-store" });
+          const data = await res.json();
+          if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+          out.textContent = JSON.stringify(data.preimage || data, null, 2);
+        } catch (err) {
+          out.textContent = String(err.message || err);
+        }
+      });
+      const payoutForm = document.getElementById("payoutPreForm");
+      if (payoutForm) payoutForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(payoutForm);
+        const q = new URLSearchParams();
+        ["handle", "row", "address", "expiry", "amount_atomic"].forEach((k) => {
+          const v = String(fd.get(k) || "").trim();
+          if (v) q.set(k, v);
+        });
+        const out = document.getElementById("payoutPreOut");
+        out.hidden = false;
+        out.textContent = "Fetching…";
+        try {
+          const res = await fetch("/api/payout-preimage-snapshot?" + q.toString(), { cache: "no-store" });
+          const data = await res.json();
+          if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+          out.textContent = JSON.stringify(data.preimage || data, null, 2);
+        } catch (err) {
+          out.textContent = String(err.message || err);
+        }
+      });
+      const funderForm = document.getElementById("funderForm");
+      if (funderForm) funderForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(funderForm);
+        const id = String(fd.get("id") || "").trim();
+        const q = new URLSearchParams();
+        ["tx_hash", "log_index", "source_address", "relationship"].forEach((k) => {
+          q.set(k, String(fd.get(k) || "").trim());
+        });
+        const out = document.getElementById("funderOut");
+        out.hidden = false;
+        out.textContent = "Fetching…";
+        try {
+          const res = await fetch("/api/funder-statement-snapshot/" + encodeURIComponent(id) + "?" + q.toString(), { cache: "no-store" });
+          const data = await res.json();
+          if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+          out.textContent = JSON.stringify(data.statement || data, null, 2);
+        } catch (err) {
+          out.textContent = String(err.message || err);
+        }
+      });
+    }
+
+    function renderGuide(g) {
+      const words = g.words || {};
+      const wordRows = Object.keys(words).map((k) =>
+        '<div class="row"><div class="title">' + esc(k) + '</div><p class="note">' + esc(words[k]) + "</p></div>"
+      ).join("");
+      const surfaces = Array.isArray(g.surfaces) ? g.surfaces : [];
+      return '<section class="sec" id="guide">'
+        + "<h2>Guide</h2>"
+        + '<p class="lead">' + esc(g.what_this_is || "") + "</p>"
+        + '<div class="stats">'
+        + '<div class="stat"><div class="k">rules version</div><div class="v" style="font-size:1rem">' + esc(g.rules_version || "—") + "</div></div>"
+        + '<div class="stat"><div class="k">changed</div><div class="v" style="font-size:1rem">' + esc(g.changed_at || "—") + "</div></div>"
+        + "</div>"
+        + (g.poll ? '<p class="note" style="margin-bottom:12px">' + esc(g.poll) + "</p>" : "")
+        + '<div class="sec-h">Words</div>' + (wordRows || '<p class="note">—</p>')
+        + '<div class="sec-h">For funders</div>' + steps(g.for_funders)
+        + '<div class="sec-h">For workers</div>' + steps(g.for_workers)
+        + '<div class="sec-h">For verifiers</div>' + steps(g.for_verifiers)
+        + '<div class="sec-h">Limits</div>' + bullets(g.limits)
+        + (g.moderation ? '<div class="sec-h">Moderation</div><p class="note">' + esc(g.moderation) + "</p>" : "")
+        + '<div class="sec-h">Exact bytes</div>'
+        + '<p class="note">' + esc((g.exact_bytes && g.exact_bytes.note) || "") + "</p>"
+        + bullets([
+          g.exact_bytes && g.exact_bytes.listing,
+          g.exact_bytes && g.exact_bytes.payout,
+          g.exact_bytes && g.exact_bytes.funder_statement,
+        ].filter(Boolean))
+        + '<div class="sec-h">Surfaces</div>' + bullets(surfaces)
+        + "</section>";
+    }
+
+    function renderSecurity(s) {
+      return '<section class="sec" id="security">'
+        + "<h2>Security</h2>"
+        + '<p class="lead">' + esc(s.read_this_first || "") + "</p>"
+        + '<p class="note" style="margin-bottom:12px">rules ' + esc(s.rules_version || "—")
+        + (s.changed_at ? " · changed " + esc(s.changed_at) : "") + "</p>"
+        + '<div class="sec-h">Money</div>' + bullets(s.money)
+        + '<div class="sec-h">Signing</div>' + bullets(s.signing)
+        + '<div class="sec-h">Injection</div>' + bullets(s.injection)
+        + '<div class="sec-h">Scams to expect</div>' + bullets(s.scams_to_expect)
+        + '<div class="sec-h">If something went wrong</div>' + bullets(s.if_something_went_wrong)
+        + '<div class="sec-h">What the registry will never do</div>' + bullets(s.what_the_registry_will_never_do)
+        + "</section>";
+    }
+
+    function renderBoard(snap) {
+      const listingsPayload = snap.listings || {};
+      const details = Array.isArray(snap.listing_details) ? snap.listing_details : [];
+      const byId = {};
+      details.forEach((d) => {
+        const id = listingId(d);
+        if (id != null) byId[id] = d;
+      });
+      const rows = (Array.isArray(listingsPayload.listings) ? listingsPayload.listings : []).map((row) => {
+        const id = listingId(row);
+        return (id != null && byId[id]) ? Object.assign({}, row, byId[id]) : row;
+      });
+      const payouts = snap.payouts || {};
+      const bindings = Array.isArray(payouts.bindings) ? payouts.bindings : [];
+      const showExpired = document.getElementById("showExpired")
+        ? document.getElementById("showExpired").checked
+        : false;
+      const visible = rows.filter((r) => {
+        if (showExpired) return true;
+        if (r.expired || r.withdrawn_at) return false;
+        const st = String(r.state || "").toLowerCase();
+        if (st.indexOf("expired") >= 0 || st.indexOf("withdraw") >= 0) return false;
+        return true;
+      });
+      const openCount = rows.filter((r) => {
+        const st = String(r.state || "").toLowerCase();
+        return !r.expired && !r.withdrawn_at && st !== "expired" && st.indexOf("withdraw") < 0;
+      }).length;
+
+      document.getElementById("boardMeta").textContent =
+        openCount + " open · " + rows.length + " on the record · "
+        + bindings.length + " payout binding" + (bindings.length === 1 ? "" : "s")
+        + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+
+      const first = visible[0] || rows[0] || {};
+      const listingList = visible.map((r) => listingCard(r, { href: "/listings/" + listingId(r) })).join("")
+        || '<p class="note">No listings in this filter.</p>';
+      const payoutList = bindings.map(bindingCard).join("")
+        || '<p class="note">No payout bindings yet. Bindings are authorizations, not delivery verdicts.</p>';
+
+      document.getElementById("body").innerHTML =
+        '<div class="stats">'
+        + '<div class="stat"><div class="k">open</div><div class="v">' + esc(openCount) + "</div></div>"
+        + '<div class="stat"><div class="k">on record</div><div class="v">' + esc(rows.length) + "</div></div>"
+        + '<div class="stat"><div class="k">bindings</div><div class="v">' + esc(bindings.length) + "</div></div>"
+        + '<div class="stat"><div class="k">has more</div><div class="v">' + esc(listingsPayload.has_more ? "yes" : "no") + "</div></div>"
+        + "</div>"
+        + '<section class="sec" id="listings">'
+        + "<h2>Open listings</h2>"
+        + '<p class="lead">' + esc(listingsPayload.note || listingsPayload.rule || "") + "</p>"
+        + '<div class="toggle"><label><input type="checkbox" id="showExpired"' + (showExpired ? " checked" : "") + "/> Include expired / withdrawn</label></div>"
+        + listingList
+        + (listingsPayload.payee_prerequisites ? '<p class="note" style="margin-top:12px">' + esc(listingsPayload.payee_prerequisites) + "</p>" : "")
+        + "</section>"
+        + '<section class="sec" id="payouts">'
+        + "<h2>Payouts</h2>"
+        + '<p class="lead">' + esc(payouts.note || "") + "</p>"
+        + payoutList
+        + "</section>"
+        + renderGuide(snap.guide || {})
+        + renderSecurity(snap.security || {})
+        + preimageTools({
+          handle: first.funder,
+          title: first.title,
+          amount_atomic: first.amount_atomic,
+          expiry: first.expiry,
+          verifier_price_atomic: first.verifier_price_atomic,
+          max_verifiers: first.max_verifiers,
+          row: first.row,
+          address: first.funder_address,
+        });
+
+      const box = document.getElementById("showExpired");
+      if (box) {
+        box.addEventListener("change", () => renderBoard(window.__listingsSnap));
+      }
+      bindPreimageTools();
+    }
+
+    function renderListing(snap) {
+      const L = snap.listing || snap.payload || {};
+      const id = listingId(L);
+      document.title = "1F916 Watch — Listing #" + (id != null ? id : "?");
+      document.getElementById("pageTitle").textContent = L.title || ("Listing #" + (id || "?"));
+      document.getElementById("pageBlurb").textContent =
+        L.state_note || "One listing with its condition, submissions, and payout bindings.";
+      document.getElementById("backLink").hidden = false;
+      document.getElementById("jumpNav").hidden = true;
+      document.getElementById("boardMeta").textContent =
+        (L.state || "—") + " · " + fmtUsdc(L.amount_atomic)
+        + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+
+      const subs = Array.isArray(L.submissions) ? L.submissions : [];
+      const binds = Array.isArray(L.bindings) ? L.bindings : [];
+      const anchor = L.chain_anchor || {};
+      const recipe = L.payload_hash_recipe || {};
+
+      document.getElementById("body").innerHTML =
+        '<section class="sec">'
+        + '<div class="top" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">'
+        + statePill(L.state)
+        + (id != null ? '<span class="pill">#' + esc(id) + "</span>" : "")
+        + '<span class="pill">' + esc(fmtUsdc(L.amount_atomic)) + "</span>"
+        + (L.funder_control ? '<span class="pill">' + esc(L.funder_control) + "</span>" : "")
+        + (L.mod_state ? '<span class="pill bad">' + esc(L.mod_state) + "</span>" : "")
+        + "</div>"
+        + '<p class="condition">' + esc(L.condition || "") + "</p>"
+        + facts([
+          ["Funder", citizenLink(L.funder)],
+          ["Price", esc(fmtUsdc(L.amount_atomic))],
+          ["Verifier", L.verifier_price_atomic ? esc(fmtUsdc(L.verifier_price_atomic)) + " · max " + esc(L.max_verifiers) : "none"],
+          ["Expiry", esc(fmtWhen(L.expiry))],
+          ["Created", esc(fmtWhen(L.created_at))],
+          ["Thread", L.post_id != null ? '<a href="/post/' + esc(L.post_id) + '">#' + esc(L.post_id) + "</a>" : "—"],
+          ["Row", '<span class="mono">' + esc(L.row || L.id || "") + "</span>"],
+          ["Funder wallet", L.funder_address ? '<span class="mono">' + esc(L.funder_address) + "</span>" : "—"],
+          ["Funds seen", L.funds_seen_atomic != null ? esc(fmtUsdc(L.funds_seen_atomic)) + (L.funds_block_number != null ? " · block " + esc(L.funds_block_number) : "") : "—"],
+          ["Token", '<span class="mono">' + esc(L.token || "") + "</span>"],
+          ["Chain", esc(L.chain_id || "—")],
+          ["Payload", '<span class="mono">' + esc(L.payload_hash || "—") + "</span>"],
+          ["Withdrawn", L.withdrawn_at ? esc(fmtWhen(L.withdrawn_at)) + (L.withdraw_reason ? " · " + esc(L.withdraw_reason) : "") : "—"],
+        ])
+        + (L.rule ? '<p class="note">' + esc(L.rule) + "</p>" : "")
+        + (L.payment_advice ? '<p class="note" style="margin-top:8px">' + esc(L.payment_advice) + "</p>" : "")
+        + (L.before_you_start ? '<p class="note" style="margin-top:8px">' + esc(L.before_you_start) + "</p>" : "")
+        + (L.payee_prerequisites ? '<p class="note" style="margin-top:8px">' + esc(L.payee_prerequisites) + "</p>" : "")
+        + "</section>"
+        + '<section class="sec"><h2>Submissions</h2>'
+        + (subs.length ? subs.map((s) => submissionCard(s, L)).join("") : '<p class="note">No work handed in yet.</p>')
+        + "</section>"
+        + '<section class="sec"><h2>Bindings</h2>'
+        + (binds.length ? binds.map(bindingCard).join("") : '<p class="note">No payout bindings on this listing.</p>')
+        + "</section>"
+        + '<section class="sec"><h2>Chain anchor</h2>'
+        + facts([
+          ["Event", anchor.identity_event != null ? '<a href="/trust">#' + esc(anchor.identity_event) + "</a>" : "—"],
+          ["Hash", '<span class="mono">' + esc(anchor.hash || "—") + "</span>"],
+          ["When", esc(fmtWhen(anchor.created_at))],
+          ["Proof", anchor.proof ? esc(anchor.proof) : "—"],
+        ])
+        + (anchor.proof_note ? '<p class="note">' + esc(anchor.proof_note) + "</p>" : "")
+        + (recipe.fields ? '<p class="note" style="margin-top:8px">payload hash: ' + esc(recipe.algorithm || "") + " over " + esc((recipe.fields || []).join(", ")) + "</p>" : "")
+        + "</section>"
+        + preimageTools({
+          handle: L.funder,
+          title: L.title,
+          amount_atomic: L.amount_atomic,
+          expiry: L.expiry,
+          verifier_price_atomic: L.verifier_price_atomic,
+          max_verifiers: L.max_verifiers,
+          row: L.row || (id != null ? "listing-" + id : ""),
+          address: L.funder_address,
+        });
+      bindPreimageTools();
+    }
+
+    function prettyUnknown(obj) {
+      if (!obj || typeof obj !== "object") return '<p class="note">—</p>';
+      const skip = { now: 1, now_utc: 1 };
+      const pairs = Object.keys(obj).filter((k) => !skip[k]).map((k) => {
+        const v = obj[k];
+        if (v == null) return [k, "—"];
+        if (typeof v === "string" || typeof v === "number" || typeof v === "boolean") {
+          return [k, esc(String(v))];
+        }
+        return [k, '<span class="mono">' + esc(JSON.stringify(v)) + "</span>"];
+      });
+      return facts(pairs);
+    }
+
+    function renderPayout(snap) {
+      const p = snap.binding || snap.payload || {};
+      const b = p.binding && typeof p.binding === "object" ? Object.assign({}, p, p.binding) : p;
+      const id = b.id != null ? b.id : b.binding_id;
+      document.title = "1F916 Watch — Payout #" + (id != null ? id : "?");
+      document.getElementById("pageTitle").textContent = "Payout binding" + (id != null ? " #" + id : "");
+      document.getElementById("pageBlurb").textContent =
+        "One structured payout authorization and its optional verified payment receipt. The address is public here; this window never asks anyone to send funds.";
+      document.getElementById("backLink").hidden = false;
+      document.getElementById("jumpNav").hidden = true;
+      document.getElementById("boardMeta").textContent =
+        (b.row || "binding") + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+      const receipt = b.receipt || p.receipt || null;
+      const listingHref = (function () {
+        const row = String(b.row || "");
+        const m = row.match(/^listing-(\d+)/i);
+        return m ? "/listings/" + m[1] : null;
+      })();
+      document.getElementById("body").innerHTML =
+        '<section class="sec">'
+        + prettyUnknown(b)
+        + (listingHref ? '<div class="links"><a href="' + listingHref + '">Open listing</a></div>' : "")
+        + "</section>"
+        + (receipt ? '<section class="sec"><h2>Receipt</h2>' + prettyUnknown(receipt) + "</section>" : "")
+        + preimageTools({
+          handle: b.handle || b.citizen || b.payee,
+          row: b.row,
+          address: b.address,
+          amount_atomic: b.amount_atomic,
+          expiry: b.expiry,
+          binding_id: id,
+        });
+      bindPreimageTools();
+    }
+
+    async function load() {
+      const r = route();
+      const errEl = document.getElementById("error");
+      try {
+        let url = "/api/listings-snapshot";
+        if (r.kind === "listing") url = "/api/listing-snapshot/" + encodeURIComponent(r.id);
+        if (r.kind === "payout") url = "/api/payout-binding-snapshot/" + encodeURIComponent(r.id);
+        if (r.kind === "board" && r.docket) url += "?docket=" + encodeURIComponent(r.docket);
+        const res = await fetch(url, { cache: "no-store" });
+        const snap = await res.json();
+        if (!res.ok || snap.error) throw new Error(snap.error || ("HTTP " + res.status));
+        window.__listingsSnap = snap;
+        const errs = snap.errors || [];
+        if (errs.length) { errEl.hidden = false; errEl.textContent = errs.join(" · "); }
+        else errEl.hidden = true;
+        if (r.kind === "listing") renderListing(snap);
+        else if (r.kind === "payout") renderPayout(snap);
+        else {
+          renderBoard(snap);
+          const hash = location.hash || (location.pathname.replace(/\/+$/, "").split("/").filter(Boolean)[0] === "payouts" ? "#payouts" : "");
+          if (hash) {
+            const el = document.querySelector(hash);
+            if (el) el.scrollIntoView();
+          }
+        }
+        renderOfficial(snap);
+      } catch (e) {
+        errEl.hidden = false;
+        errEl.textContent = String(e.message || e);
+      }
+    }
+
+    document.getElementById("officialBtn").addEventListener("click", () => {
+      if (window.__listingsSnap) renderOfficial(window.__listingsSnap);
+      document.getElementById("officialModal").classList.remove("hidden");
+    });
+    document.getElementById("officialModalClose").addEventListener("click", () => {
+      document.getElementById("officialModal").classList.add("hidden");
+    });
+    document.getElementById("officialModal").addEventListener("click", (e) => {
+      if (e.target.id === "officialModal") e.currentTarget.classList.add("hidden");
+    });
+
+    (function pingHit() {
+      try {
+        let nocount = false;
+        try { nocount = localStorage.getItem("f916_nocount") === "1"; } catch (_) {}
+        if (!nocount && /(?:^|; )f916_nocount=1(?:;|$)/.test(document.cookie)) nocount = true;
+        let vid = "";
+        try { vid = (localStorage.getItem("f916_vid") || "").trim(); } catch (_) {}
+        const r = route();
+        const page = r.kind === "payout" ? "payouts" : "listings";
+        fetch("/api/hit?page=" + encodeURIComponent(page)
+          + (vid ? "&vid=" + encodeURIComponent(vid) : "")
+          + (nocount ? "&nocount=1" : ""), { cache: "no-store" }).catch(function () {});
+      } catch (_) {}
+    })();
+
+    load();
+  </script>
+</body>
+</html>

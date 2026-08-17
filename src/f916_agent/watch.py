@@ -81,6 +81,7 @@ _HSTS_HEADER = ("Strict-Transport-Security", "max-age=63072000; includeSubDomain
 UI_PATH = Path(__file__).with_name("watch_ui.html")
 TREASURY_UI_PATH = Path(__file__).with_name("treasury_ui.html")
 TRUST_UI_PATH = Path(__file__).with_name("trust_ui.html")
+LISTINGS_UI_PATH = Path(__file__).with_name("listings_ui.html")
 FAVICON_PATH = Path(__file__).with_name("favicon.svg")
 CHAT_JS_PATH = Path(__file__).with_name("chat.js")
 WATCHLIST_JS_PATH = Path(__file__).with_name("watchlist.js")
@@ -96,6 +97,11 @@ API_SNAP_RE = re.compile(r"^/api/snapshot/([A-Za-z0-9_-]{2,32})/?$")
 API_ALLOWANCE_RE = re.compile(r"^/api/public-allowance/([A-Za-z0-9_-]{2,32})/?$")
 API_ATTESTATION_SNAP_RE = re.compile(r"^/api/attestation-snapshot/(\d+)/?$")
 ATTESTATION_PAGE_RE = re.compile(r"^/attestations/(\d+)/?$")
+LISTING_PAGE_RE = re.compile(r"^/listings/(\d+)/?$")
+PAYOUT_PAGE_RE = re.compile(r"^/payouts/(\d+)/?$")
+API_LISTING_SNAP_RE = re.compile(r"^/api/listing-snapshot/(\d+)/?$")
+API_PAYOUT_SNAP_RE = re.compile(r"^/api/payout-binding-snapshot/(\d+)/?$")
+API_FUNDER_STMT_RE = re.compile(r"^/api/funder-statement-snapshot/(\d+)/?$")
 BADGE_RE = re.compile(r"^/badge/([A-Za-z0-9_-]{2,32})\.svg/?$")
 HANDLE_RE = re.compile(r"^/([A-Za-z0-9_-]{2,32})/?$")
 RESERVED_ROOTS = {
@@ -112,6 +118,8 @@ RESERVED_ROOTS = {
     "flags",
     "provenance",
     "trust",
+    "listings",
+    "payouts",
     "attestations",
     "badge",
     "healthz",
@@ -280,6 +288,7 @@ _BOARDS_NAV = (
     ("provenance", "Provenance", "/provenance"),
     ("treasury", "Treasury", "/treasury"),
     ("trust", "Trust", "/trust"),
+    ("listings", "Listings", "/listings"),
 )
 
 _NAV_DROP_CSS = """
@@ -297,10 +306,12 @@ _NAV_DROP_CSS = """
 
 
 def _boards_nav_html(*, btn_class: str = "btn", current: str = "") -> str:
-    """Stats / docket / provenance / treasury / trust under one Boards control."""
+    """Stats / docket / provenance / treasury / trust / listings under one Boards control."""
     current = str(current or "").lower()
     if current == "attestations":
         current = "trust"
+    if current == "payouts":
+        current = "listings"
     labels = {key: label for key, label, _ in _BOARDS_NAV}
     on_board = current in labels
     trigger_cls = btn_class + (" active" if on_board else "")
@@ -2702,6 +2713,12 @@ def render_hits_page(stats: Dict[str, Any]) -> bytes:
         elif key == "trust":
             href = "/trust"
             label = "Trust"
+        elif key == "listings":
+            href = "/listings"
+            label = "Listings"
+        elif key == "payouts":
+            href = "/listings#payouts"
+            label = "Payouts"
         else:
             href = "/" + key
             label = key
@@ -3961,6 +3978,7 @@ def build_public_snapshot(
             "record": {},
             "keys": {},
             "badge_url": None,
+            "listings": {"funded": [], "submitted": [], "source": "/api/listings"},
             "errors": ["citizen not found"],
         }
 
@@ -4268,6 +4286,7 @@ def build_public_snapshot(
         "record": record,
         "keys": keys_public,
         "badge_url": "/badge/{}.svg".format(h),
+        "listings": _listings_for_handle(client, h, errors),
         "errors": errors,
     }
 
@@ -4973,6 +4992,230 @@ def build_attestation_snapshot(client: Client, attestation_id: int) -> Dict[str,
     }
 
 
+def _coerce_listing_id(row: Any) -> Optional[int]:
+    if not isinstance(row, dict):
+        return None
+    raw = row.get("listing_id")
+    if raw is None:
+        raw = row.get("id")
+    if raw is None:
+        return None
+    if isinstance(raw, int):
+        return raw
+    text = str(raw).strip()
+    if text.lower().startswith("listing-"):
+        text = text.split("-", 1)[1]
+    try:
+        return int(text)
+    except (TypeError, ValueError):
+        return None
+
+
+def _listing_summary(detail: Dict[str, Any]) -> Dict[str, Any]:
+    lid = _coerce_listing_id(detail)
+    subs = detail.get("submissions") if isinstance(detail.get("submissions"), list) else []
+    binds = detail.get("bindings") if isinstance(detail.get("bindings"), list) else []
+    return {
+        "listing_id": lid,
+        "id": detail.get("id") or ("listing-{}".format(lid) if lid is not None else None),
+        "row": detail.get("row") or ("listing-{}".format(lid) if lid is not None else None),
+        "title": detail.get("title"),
+        "funder": detail.get("funder"),
+        "state": detail.get("state"),
+        "amount_atomic": detail.get("amount_atomic"),
+        "expiry": detail.get("expiry"),
+        "post_id": detail.get("post_id"),
+        "submissions": len(subs),
+        "bindings": len(binds),
+        "expired": detail.get("expired"),
+        "withdrawn_at": detail.get("withdrawn_at"),
+    }
+
+
+def build_listings_snapshot(
+    client: Client, *, docket: Optional[str] = None
+) -> Dict[str, Any]:
+    """Open+expired listings, details, payouts, guide, and security for /listings."""
+    cache_key = "listings:" + (docket or "")
+    with _BOARD_LOCK:
+        entry = _BOARD_CACHE.get(cache_key) or {}
+        age = datetime.now(timezone.utc).timestamp() - float(entry.get("fetched_at") or 0)
+        if age < _BOARD_TTL_SEC and entry.get("snap") is not None:
+            return dict(entry["snap"])
+    errors: List[str] = []
+    listings: Dict[str, Any] = {}
+    details: List[Dict[str, Any]] = []
+    payouts: Dict[str, Any] = {}
+    guide: Dict[str, Any] = {}
+    security: Dict[str, Any] = {}
+    official: Dict[str, Any] = {}
+    try:
+        listings = client.listings(include_expired=True) or {}
+    except ApiError as e:
+        errors.append("listings: {}".format(e))
+    ids: List[int] = []
+    seen: set = set()
+    for row in list(listings.get("listings") or []):
+        lid = _coerce_listing_id(row)
+        if lid is None or lid in seen:
+            continue
+        seen.add(lid)
+        ids.append(lid)
+    if ids:
+        with ThreadPoolExecutor(max_workers=min(8, len(ids))) as pool:
+            futs = {pool.submit(client.listing, i): i for i in ids}
+            for fut in as_completed(futs):
+                i = futs[fut]
+                try:
+                    payload = fut.result() or {}
+                    if isinstance(payload, dict):
+                        details.append(payload)
+                except ApiError as e:
+                    errors.append("listings/{}: {}".format(i, e))
+        details.sort(key=lambda d: int(_coerce_listing_id(d) or 0))
+    try:
+        payouts = client.payouts(docket=docket or None) or {}
+    except ApiError as e:
+        errors.append("payouts: {}".format(e))
+    try:
+        guide = client.listings_guide() or {}
+    except ApiError as e:
+        errors.append("listings/guide: {}".format(e))
+    try:
+        security = client.listings_security() or {}
+    except ApiError as e:
+        errors.append("listings/security: {}".format(e))
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    snap = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "listings",
+        "listings": listings,
+        "listing_details": details,
+        "payouts": payouts,
+        "guide": guide,
+        "security": security,
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+    with _BOARD_LOCK:
+        _BOARD_CACHE[cache_key] = {
+            "fetched_at": datetime.now(timezone.utc).timestamp(),
+            "snap": snap,
+        }
+    return dict(snap)
+
+
+def _listings_for_handle(
+    client: Client, handle: str, errors: List[str]
+) -> Dict[str, Any]:
+    funded: List[Dict[str, Any]] = []
+    submitted: List[Dict[str, Any]] = []
+    try:
+        snap = build_listings_snapshot(client)
+    except Exception as e:  # noqa: BLE001 — citizen page still renders
+        errors.append("listings: {}".format(e))
+        return {"funded": [], "submitted": [], "source": "/api/listings"}
+    for detail in snap.get("listing_details") or []:
+        if not isinstance(detail, dict):
+            continue
+        lid = _coerce_listing_id(detail)
+        if str(detail.get("funder") or "") == handle:
+            funded.append(_listing_summary(detail))
+        for sub in list(detail.get("submissions") or []):
+            if not isinstance(sub, dict):
+                continue
+            if str(sub.get("handle") or "") != handle:
+                continue
+            submitted.append(
+                {
+                    "id": sub.get("id"),
+                    "listing_id": lid,
+                    "listing_title": detail.get("title"),
+                    "artifact": sub.get("artifact"),
+                    "note": sub.get("note"),
+                    "created_at": sub.get("created_at"),
+                    "paid": sub.get("paid"),
+                    "paid_by_third_party": sub.get("paid_by_third_party"),
+                    "payee_status": sub.get("payee_status") or {},
+                }
+            )
+    return {
+        "funded": funded,
+        "submitted": submitted,
+        "source": "/api/listings",
+    }
+
+
+def build_listing_snapshot(client: Client, listing_id: int) -> Dict[str, Any]:
+    errors: List[str] = []
+    payload: Dict[str, Any] = {}
+    official: Dict[str, Any] = {}
+    try:
+        payload = client.listing(listing_id) or {}
+    except ApiError as e:
+        errors.append("listing: {}".format(e))
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": "listing",
+            "error": str(e),
+            "listing_id": listing_id,
+            "listing": {},
+            "official": {},
+            "official_security_url": "https://1f916.ai/.well-known/security.txt",
+            "errors": errors,
+        }
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "listing",
+        "listing_id": listing_id,
+        "listing": payload,
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+
+
+def build_payout_binding_snapshot(client: Client, binding_id: int) -> Dict[str, Any]:
+    errors: List[str] = []
+    payload: Dict[str, Any] = {}
+    official: Dict[str, Any] = {}
+    try:
+        payload = client.payout_binding(binding_id) or {}
+    except ApiError as e:
+        errors.append("payout-binding: {}".format(e))
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "mode": "payout",
+            "error": str(e),
+            "binding_id": binding_id,
+            "binding": {},
+            "official": {},
+            "official_security_url": "https://1f916.ai/.well-known/security.txt",
+            "errors": errors,
+        }
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "payout",
+        "binding_id": binding_id,
+        "binding": payload,
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+
+
 def render_docket_page() -> bytes:
     return _render_board_shell(
         title="1F916 Watch — Docket",
@@ -5380,6 +5623,7 @@ function renderDocket(snap) {{
       + '<div class="links">threads ' + postLinks(r.source_posts)
       + (r.decision_thread ? ' · decision <a href="/post/' + esc(r.decision_thread) + '">#' + esc(r.decision_thread) + '</a>' : '')
       + (verdict.where ? ' · where <a href="/post/' + esc(verdict.where) + '">#' + esc(verdict.where) + '</a>' : '')
+      + ' · <a href="/listings?docket=' + encodeURIComponent(r.id || "") + '#payouts">payouts</a>'
       + '</div></article>';
   }}).join("") || '<p class="note">No docket rows.</p>';
 }}
@@ -5909,9 +6153,11 @@ def make_handler(
                 self.end_headers()
                 return
             if (
-                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/flags", "/stats", "/provenance", "/trust")
+                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/flags", "/stats", "/provenance", "/trust", "/listings", "/payouts")
                 or HANDLE_RE.match(path)
                 or ATTESTATION_PAGE_RE.match(path)
+                or LISTING_PAGE_RE.match(path)
+                or PAYOUT_PAGE_RE.match(path)
                 or path == "/local"
                 or (
                     _admin_local is not None
@@ -6046,6 +6292,15 @@ def make_handler(
                 self._send(
                     200,
                     _html_with_chat(TRUST_UI_PATH.read_bytes()),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            if path in ("/listings", "/payouts") or LISTING_PAGE_RE.match(path) or PAYOUT_PAGE_RE.match(path):
+                self._send(
+                    200,
+                    _html_with_chat(LISTINGS_UI_PATH.read_bytes()),
                     "text/html; charset=utf-8",
                     set_nocount=set_nocount,
                 )
@@ -6213,6 +6468,144 @@ def make_handler(
                     snap = build_trust_snapshot(client)
                     raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
                     self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/listings-snapshot":
+                try:
+                    docket = (qs.get("docket") or [None])[0]
+                    snap = build_listings_snapshot(client, docket=docket)
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            m_listing_snap = API_LISTING_SNAP_RE.match(path)
+            if m_listing_snap:
+                try:
+                    snap = build_listing_snapshot(client, int(m_listing_snap.group(1)))
+                    code = 404 if snap.get("error") else 200
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(code, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            m_payout_snap = API_PAYOUT_SNAP_RE.match(path)
+            if m_payout_snap:
+                try:
+                    snap = build_payout_binding_snapshot(
+                        client, int(m_payout_snap.group(1))
+                    )
+                    code = 404 if snap.get("error") else 200
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(code, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/listings-preimage-snapshot":
+                try:
+                    handle = (qs.get("handle") or [""])[0]
+                    title = (qs.get("title") or [""])[0]
+                    amount = (qs.get("amount_atomic") or [""])[0]
+                    expiry_raw = (qs.get("expiry") or [""])[0]
+                    if not handle or not title or not amount or not expiry_raw:
+                        raise ApiError(400, "handle, title, amount_atomic, and expiry are required")
+                    verifier = (qs.get("verifier_price_atomic") or [None])[0]
+                    max_v_raw = (qs.get("max_verifiers") or [None])[0]
+                    payload = client.listings_preimage(
+                        handle=str(handle),
+                        title=str(title),
+                        amount_atomic=str(amount),
+                        expiry=int(expiry_raw),
+                        verifier_price_atomic=str(verifier) if verifier else None,
+                        max_verifiers=int(max_v_raw) if max_v_raw not in (None, "") else None,
+                    ) or {}
+                    raw = json.dumps(
+                        {
+                            "generated_at": datetime.now(timezone.utc).isoformat(),
+                            "preimage": payload,
+                        },
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except ApiError as e:
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(e.status, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/payout-preimage-snapshot":
+                try:
+                    handle = (qs.get("handle") or [""])[0]
+                    row = (qs.get("row") or [""])[0]
+                    address = (qs.get("address") or [""])[0]
+                    expiry_raw = (qs.get("expiry") or [""])[0]
+                    if not handle or not row or not address or not expiry_raw:
+                        raise ApiError(400, "handle, row, address, and expiry are required")
+                    amount = (qs.get("amount_atomic") or [None])[0]
+                    payload = client.payout_bindings_preimage(
+                        handle=str(handle),
+                        row=str(row),
+                        address=str(address),
+                        expiry=int(expiry_raw),
+                        amount_atomic=str(amount) if amount else None,
+                    ) or {}
+                    raw = json.dumps(
+                        {
+                            "generated_at": datetime.now(timezone.utc).isoformat(),
+                            "preimage": payload,
+                        },
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except ApiError as e:
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(e.status, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            m_funder = API_FUNDER_STMT_RE.match(path)
+            if m_funder:
+                try:
+                    tx_hash = (qs.get("tx_hash") or [""])[0]
+                    log_raw = (qs.get("log_index") or [""])[0]
+                    source = (qs.get("source_address") or [""])[0]
+                    rel = (qs.get("relationship") or [""])[0]
+                    if not tx_hash or not log_raw or not source or not rel:
+                        raise ApiError(
+                            400,
+                            "tx_hash, log_index, source_address, and relationship are required",
+                        )
+                    payload = client.payout_funder_statement(
+                        int(m_funder.group(1)),
+                        tx_hash=str(tx_hash),
+                        log_index=int(log_raw),
+                        source_address=str(source),
+                        relationship=str(rel),
+                    ) or {}
+                    raw = json.dumps(
+                        {
+                            "generated_at": datetime.now(timezone.utc).isoformat(),
+                            "statement": payload,
+                        },
+                        ensure_ascii=False,
+                    ).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except ApiError as e:
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(e.status, raw, "application/json; charset=utf-8")
                 except Exception as e:  # pragma: no cover
                     raw = json.dumps({"error": str(e)}).encode("utf-8")
                     self._send(500, raw, "application/json; charset=utf-8")

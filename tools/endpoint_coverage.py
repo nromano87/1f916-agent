@@ -123,8 +123,10 @@ def check_path(root: Any, path: str) -> List[str]:
 def substitute(path: str) -> str:
     import time
 
-    since = str(int(time.time() * 1000) - 86_400_000)
-    return path.replace("{{since24h}}", since)
+    now = time.time()
+    since = str(int(now * 1000) - 86_400_000)
+    expiry30 = str(int(now) + 7 * 86_400)
+    return path.replace("{{since24h}}", since).replace("{{expiry30d}}", expiry30)
 
 
 def run_coverage(manifest_path: Path) -> int:
