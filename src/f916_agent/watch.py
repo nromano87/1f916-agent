@@ -819,7 +819,43 @@ _PRESENCE_TTL_SEC = 75
 _PRESENCE_MAX = 8000
 
 
-def touch_presence(visitor_id: str, page: str = "") -> Dict[str, Any]:
+_PRESENCE_FLUSH_LOCK = threading.Lock()
+_PRESENCE_FLUSH_SEC = 3.0
+_presence_flushed_at = 0.0
+
+
+def _write_presence_snapshot(store: Store) -> None:
+    """Best-effort file so localhost admin can pull live viewers from Fly."""
+    global _presence_flushed_at
+    now = time.time()
+    with _PRESENCE_FLUSH_LOCK:
+        if now - _presence_flushed_at < _PRESENCE_FLUSH_SEC:
+            return
+        bag = concurrent_viewers()
+        path = store.root / "visitor_presence.json"
+        tmp = path.with_name(
+            "visitor_presence.{:d}.{:d}.tmp".format(os.getpid(), threading.get_ident())
+        )
+        payload = json.dumps(bag, separators=(",", ":")) + "\n"
+        try:
+            store.ensure()
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+            _presence_flushed_at = now
+        except OSError:
+            try:
+                if tmp.exists():
+                    tmp.unlink()
+            except OSError:
+                pass
+
+
+def touch_presence(
+    visitor_id: str, page: str = "", store: Optional[Store] = None
+) -> Dict[str, Any]:
     """Record that a guestbook vid is currently on a page (in-memory)."""
     vid = _normalize_vid(visitor_id)
     if not vid:
@@ -840,6 +876,8 @@ def touch_presence(visitor_id: str, page: str = "") -> Dict[str, Any]:
                 )
                 for v, _ in oldest[: max(0, len(_PRESENCE) - _PRESENCE_MAX)]:
                     _PRESENCE.pop(v, None)
+    if store is not None:
+        _write_presence_snapshot(store)
     return {"ok": True, "vid": vid, "page": key, "t": now}
 
 
@@ -6709,7 +6747,7 @@ def make_handler(
                         # counted=false only for nocount; return visits still "count"
                         hits["counted"] = True
                     # Presence for concurrent viewers (admin) — even on nocount.
-                    touch_presence(vid, page)
+                    touch_presence(vid, page, store=store)
                     raw = json.dumps(hits, ensure_ascii=False).encode("utf-8")
                     self._send(
                         200,
@@ -6725,7 +6763,7 @@ def make_handler(
             if path == "/api/presence":
                 page = (qs.get("page") or [""])[0]
                 vid = (qs.get("vid") or [""])[0]
-                payload = touch_presence(vid, page)
+                payload = touch_presence(vid, page, store=store)
                 code = 200 if payload.get("ok") else 400
                 raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
                 self._send(code, raw, "application/json; charset=utf-8")
@@ -6995,6 +7033,9 @@ def serve(
                 _admin_local.ADMIN_PAGE_PATH,
             )
         )
+        banner = getattr(_admin_local, "source_banner", None)
+        if callable(banner):
+            print("  {}".format(banner()))
     print("  Ctrl+C to stop")
     if open_browser:
         threading.Timer(0.4, lambda: webbrowser.open(url)).start()
