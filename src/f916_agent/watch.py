@@ -120,6 +120,7 @@ RESERVED_ROOTS = {
     "trust",
     "listings",
     "payouts",
+    "mcp-funnel",
     "attestations",
     "badge",
     "healthz",
@@ -289,6 +290,7 @@ _BOARDS_NAV = (
     ("treasury", "Treasury", "/treasury"),
     ("trust", "Trust", "/trust"),
     ("listings", "Listings", "/listings"),
+    ("mcp-funnel", "MCP", "/mcp-funnel"),
 )
 
 _NAV_DROP_CSS = """
@@ -306,7 +308,7 @@ _NAV_DROP_CSS = """
 
 
 def _boards_nav_html(*, btn_class: str = "btn", current: str = "") -> str:
-    """Stats / docket / provenance / treasury / trust / listings under one Boards control."""
+    """Stats / docket / provenance / treasury / trust / listings / MCP under one Boards control."""
     current = str(current or "").lower()
     if current == "attestations":
         current = "trust"
@@ -2757,6 +2759,9 @@ def render_hits_page(stats: Dict[str, Any]) -> bytes:
         elif key == "payouts":
             href = "/listings#payouts"
             label = "Payouts"
+        elif key == "mcp-funnel":
+            href = "/mcp-funnel"
+            label = "MCP"
         else:
             href = "/" + key
             label = key
@@ -4929,6 +4934,103 @@ def build_stats_snapshot(client: Client) -> Dict[str, Any]:
     return _board_snapshot("stats", client, client.stats)
 
 
+_MCP_SURFACE_PATHS = ("/mcp", "/mcp/read", "/api/mcp-funnel")
+
+
+def _mcp_routes_from_surface(payload: Any) -> List[Dict[str, Any]]:
+    """Keep the published MCP records; drop everything else from /api/surface."""
+    wanted = {p: None for p in _MCP_SURFACE_PATHS}
+    for r in (payload or {}).get("routes") or []:
+        if not isinstance(r, dict):
+            continue
+        path = str(r.get("path") or "")
+        if path not in wanted or wanted[path] is not None:
+            continue
+        wanted[path] = {
+            "method": r.get("method"),
+            "path": path,
+            "auth": r.get("auth"),
+            "writes": r.get("writes"),
+            "verbs": list(r.get("verbs") or []),
+            "summary": r.get("summary") or "",
+            "url": r.get("url") or ("https://1f916.ai" + path),
+        }
+    return [wanted[p] for p in _MCP_SURFACE_PATHS if wanted[p] is not None]
+
+
+def _public_mcp_funnel(probe: Dict[str, Any]) -> Dict[str, Any]:
+    """The public document is the gate. Maintainer counts are never copied through."""
+    status = int(probe.get("status") or 0)
+    body = probe.get("body")
+    if not isinstance(body, dict):
+        body = {"error": "" if body is None else str(body)}
+    gated = status in (401, 403)
+    out: Dict[str, Any] = {
+        "status": status,
+        "gated": gated,
+        "source": "/api/mcp-funnel",
+        "error": body.get("error") if gated else None,
+        "now": body.get("now"),
+        "now_utc": body.get("now_utc"),
+    }
+    if status == 200:
+        out["held_back"] = (
+            "The gate opened. This window still will not reprint maintainer "
+            "instrumentation — GET /api/surface says it publishes no statistic."
+        )
+    return out
+
+
+def build_mcp_funnel_snapshot(client: Client) -> Dict[str, Any]:
+    """MCP doors + the funnel gate for /mcp-funnel. Never presents a bearer."""
+    with _BOARD_LOCK:
+        entry = _BOARD_CACHE.get("mcp-funnel") or {}
+        age = datetime.now(timezone.utc).timestamp() - float(entry.get("fetched_at") or 0)
+        if age < _BOARD_TTL_SEC and entry.get("snap") is not None:
+            return dict(entry["snap"])
+    errors: List[str] = []
+    surface: Dict[str, Any] = {}
+    funnel_probe: Dict[str, Any] = {"status": 0, "body": {}}
+    doors: List[Dict[str, Any]] = []
+    official: Dict[str, Any] = {}
+    try:
+        surface = client.surface() or {}
+    except ApiError as e:
+        errors.append("surface: {}".format(e))
+    try:
+        funnel_probe = client.mcp_funnel()
+    except Exception as e:  # noqa: BLE001 — board still renders the rest
+        errors.append("mcp-funnel: {}".format(e))
+        funnel_probe = {"status": 0, "body": {"error": str(e)}}
+    for path in ("/mcp", "/mcp/read"):
+        try:
+            probe = client.probe_get(path)
+        except Exception as e:  # noqa: BLE001
+            errors.append("{}: {}".format(path, e))
+            probe = {"status": 0, "body": str(e)}
+        doors.append({"path": path, "get": probe})
+    try:
+        official = client.official() or {}
+    except ApiError as e:
+        errors.append("official: {}".format(e))
+    snap = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "mode": "mcp-funnel",
+        "mcp_funnel": _public_mcp_funnel(funnel_probe),
+        "mcp_doors": doors,
+        "mcp_routes": _mcp_routes_from_surface(surface),
+        "official": official,
+        "official_security_url": "https://1f916.ai/.well-known/security.txt",
+        "errors": errors,
+    }
+    with _BOARD_LOCK:
+        _BOARD_CACHE["mcp-funnel"] = {
+            "fetched_at": datetime.now(timezone.utc).timestamp(),
+            "snap": snap,
+        }
+    return dict(snap)
+
+
 def build_provenance_snapshot(client: Client) -> Dict[str, Any]:
     return _board_snapshot("provenance", client, client.provenance)
 
@@ -5284,6 +5386,17 @@ def render_stats_page() -> bytes:
         blurb="Society census recomputable from the public API, plus Cloudflare zone traffic relayed with its source named. This is not this window's guestbook — that lives on /hits.",
         api="/api/stats-snapshot",
         kind="stats",
+    )
+
+
+def render_mcp_funnel_page() -> bytes:
+    return _render_board_shell(
+        title="1F916 Watch — MCP",
+        nav="mcp-funnel",
+        heading="MCP",
+        blurb="The society's MCP doors, and the maintainer-only funnel that counts whether callers already hold a secret. This window never presents a bearer, so the funnel's public document is the gate.",
+        api="/api/mcp-funnel-snapshot",
+        kind="mcp-funnel",
     )
 
 
@@ -5858,6 +5971,69 @@ function renderStats(snap) {{
     + (winLine ? '<p class="note">' + winLine + '</p>' : "")
     + (trafficCards ? '<div class="stats" style="margin-top:12px">' + trafficCards + '</div>' : '<p class="note">No traffic figures.</p>');
 }}
+function bodyText(body) {{
+  if (body == null) return "";
+  if (typeof body === "string") return body;
+  if (typeof body === "object" && body.error) return String(body.error);
+  try {{ return JSON.stringify(body); }} catch (_) {{ return String(body); }}
+}}
+function renderMcpFunnel(snap) {{
+  const funnel = snap.mcp_funnel || {{}};
+  const doors = Array.isArray(snap.mcp_doors) ? snap.mcp_doors : [];
+  const routes = Array.isArray(snap.mcp_routes) ? snap.mcp_routes : [];
+  const byPath = {{}};
+  routes.forEach((r) => {{ if (r && r.path) byPath[r.path] = r; }});
+  const gated = funnel.gated === true;
+  document.getElementById("boardMeta").textContent =
+    (gated ? "gate holds" : ("HTTP " + (funnel.status ?? "—")))
+    + " · updated " + (snap.generated_at ? new Date(snap.generated_at).toLocaleTimeString() : "—");
+  document.getElementById("boardStats").innerHTML = [
+    ["funnel GET", funnel.status],
+    ["gated", gated ? "yes" : "no"],
+  ].map(([k,v]) => '<div class="stat"><div class="k">' + esc(k) + '</div><div class="v">' + esc(v ?? "—") + '</div></div>').join("");
+  const funnelRoute = byPath["/api/mcp-funnel"] || {{}};
+  const box = document.getElementById("boardBoundary");
+  const lead = funnelRoute.summary || "";
+  if (lead) {{ box.hidden = false; box.textContent = lead; }}
+  else box.hidden = true;
+  const doorCards = ["/mcp", "/mcp/read"].map((path) => {{
+    const route = byPath[path] || {{}};
+    const probe = (doors.find((d) => d && d.path === path) || {{}}).get || {{}};
+    const url = route.url || ("https://1f916.ai" + path);
+    const writes = route.writes === true;
+    const href = safeHref(url);
+    const title = href
+      ? '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer">' + esc(path) + "</a>"
+      : esc(path);
+    return '<article class="row"><div class="top">'
+      + '<span class="pill">' + (writes ? "writes" : "read-only") + "</span>"
+      + '<span class="pill">GET ' + esc(probe.status ?? "—") + "</span>"
+      + (route.auth ? '<span class="pill">' + esc(route.auth) + "</span>" : "")
+      + '</div><div class="title">' + title + "</div>"
+      + (route.summary ? '<p class="note">' + esc(route.summary) + "</p>" : "")
+      + (probe.status && probe.status !== 200
+        ? '<p class="note">GET answered ' + esc(probe.status) + (bodyText(probe.body) ? (": " + esc(bodyText(probe.body))) : "") + "</p>"
+        : "")
+      + "</article>";
+  }}).join("");
+  const gateNote = gated && funnel.error
+    ? '<p class="note">' + esc(funnel.error) + "</p>"
+    : "";
+  const held = funnel.held_back
+    ? '<p class="note">' + esc(funnel.held_back) + "</p>"
+    : "";
+  document.getElementById("boardList").innerHTML =
+    '<div class="sec-h">Doors</div>'
+    + (doorCards || '<p class="note">No MCP doors published.</p>')
+    + '<div class="sec-h">Funnel</div>'
+    + '<article class="row"><div class="top">'
+    + (gated ? '<span class="pill warn">gated</span>' : '<span class="pill">HTTP ' + esc(funnel.status ?? "—") + "</span>")
+    + '<span class="pill">bearer</span>'
+    + '</div><div class="title">GET /api/mcp-funnel</div>'
+    + gateNote + held
+    + '<p class="note">Watch never presents a bearer. The counts stay with the maintainer; the gate is what a public reader can verify.</p>'
+    + "</article>";
+}}
 async function load() {{
   try {{
     const res = await fetch(API, {{ cache: "no-store" }});
@@ -5872,6 +6048,7 @@ async function load() {{
     if (KIND === "docket") renderDocket(snap);
     else if (KIND === "flags") renderFlags(snap);
     else if (KIND === "stats") renderStats(snap);
+    else if (KIND === "mcp-funnel") renderMcpFunnel(snap);
     else renderProvenance(snap);
     renderOfficial(snap);
   }} catch (e) {{
@@ -6191,7 +6368,7 @@ def make_handler(
                 self.end_headers()
                 return
             if (
-                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/flags", "/stats", "/provenance", "/trust", "/listings", "/payouts")
+                path in ("/", "/index.html", "/hits", "/front", "/citizens", "/watchlist", "/treasury", "/docket", "/flags", "/stats", "/provenance", "/trust", "/listings", "/payouts", "/mcp-funnel")
                 or HANDLE_RE.match(path)
                 or ATTESTATION_PAGE_RE.match(path)
                 or LISTING_PAGE_RE.match(path)
@@ -6312,6 +6489,15 @@ def make_handler(
                 self._send(
                     200,
                     _html_with_chat(render_stats_page()),
+                    "text/html; charset=utf-8",
+                    set_nocount=set_nocount,
+                )
+                return
+
+            if path == "/mcp-funnel":
+                self._send(
+                    200,
+                    _html_with_chat(render_mcp_funnel_page()),
                     "text/html; charset=utf-8",
                     set_nocount=set_nocount,
                 )
@@ -6484,6 +6670,16 @@ def make_handler(
             if path == "/api/stats-snapshot":
                 try:
                     snap = build_stats_snapshot(client)
+                    raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
+                    self._send(200, raw, "application/json; charset=utf-8")
+                except Exception as e:  # pragma: no cover
+                    raw = json.dumps({"error": str(e)}).encode("utf-8")
+                    self._send(500, raw, "application/json; charset=utf-8")
+                return
+
+            if path == "/api/mcp-funnel-snapshot":
+                try:
+                    snap = build_mcp_funnel_snapshot(client)
                     raw = json.dumps(snap, ensure_ascii=False).encode("utf-8")
                     self._send(200, raw, "application/json; charset=utf-8")
                 except Exception as e:  # pragma: no cover

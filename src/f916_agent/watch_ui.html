@@ -2136,6 +2136,7 @@
                 <a class="nav-drop-item" role="menuitem" href="/treasury" data-nav="treasury">Treasury</a>
                 <a class="nav-drop-item" role="menuitem" href="/trust" data-nav="trust">Trust</a>
                 <a class="nav-drop-item" role="menuitem" href="/listings" data-nav="listings">Listings</a>
+                <a class="nav-drop-item" role="menuitem" href="/mcp-funnel" data-nav="mcp-funnel">MCP</a>
               </div>
             </div>
             <button class="btn secondary" type="button" id="officialBtn" aria-haspopup="dialog" aria-controls="officialModal">Official</button>
@@ -2834,7 +2835,7 @@
       const parts = location.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
       if (!parts.length) return null;
       const h = parts[0];
-      if (["api", "post", "local", "hits", "front", "citizens", "stats", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "stats", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "listings", "payouts", "mcp-funnel", "attestations", "healthz"].includes(h.toLowerCase())) return null;
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
       return h;
     }
@@ -3020,7 +3021,7 @@
     function citizenHref(handle) {
       const h = String(handle || "").trim();
       if (!/^[A-Za-z0-9_-]{2,32}$/.test(h)) return null;
-      if (["api", "post", "local", "hits", "front", "citizens", "stats", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "healthz"].includes(h.toLowerCase())) return null;
+      if (["api", "post", "local", "hits", "front", "citizens", "stats", "watchlist", "treasury", "docket", "flags", "provenance", "trust", "listings", "payouts", "mcp-funnel", "attestations", "healthz"].includes(h.toLowerCase())) return null;
       return "/" + encodeURIComponent(h);
     }
 
@@ -5345,7 +5346,7 @@ cross-witness
           const foot = document.querySelector("footer.note");
           if (foot) {
             foot.innerHTML =
-              `Society front page · <a href="/treasury">Treasury</a> · <a href="/listings">Listings</a> · <a href="/citizens">Browse citizens</a> · <a href="/stats">Stats</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
+              `Society front page · <a href="/treasury">Treasury</a> · <a href="/listings">Listings</a> · <a href="/mcp-funnel">MCP</a> · <a href="/citizens">Browse citizens</a> · <a href="/stats">Stats</a> · <a href="https://1f916.ai/" target="_blank" rel="noreferrer">1f916.ai</a>`;
           }
           restoreScrolls(scrolls);
           applyPendingScrolls();

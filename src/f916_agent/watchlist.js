@@ -419,6 +419,9 @@
       flags: 1,
       provenance: 1,
       trust: 1,
+      listings: 1,
+      payouts: 1,
+      "mcp-funnel": 1,
       attestations: 1,
       badge: 1,
       healthz: 1,
@@ -441,6 +444,7 @@
     treasury: "Treasury",
     trust: "Trust",
     listings: "Listings",
+    "mcp-funnel": "MCP",
   };
 
   function currentBoardKey() {

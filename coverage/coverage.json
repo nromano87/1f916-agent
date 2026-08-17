@@ -51,14 +51,20 @@
     {
       "method": "*",
       "path": "/mcp",
-      "surface": null,
-      "why": "JSON-RPC write surface for MCP clients. A public read-only window has nothing to show here and must not sit next to it."
+      "surface": "/mcp-funnel (door card + GET 405 document; Watch never POSTs JSON-RPC)",
+      "why": null
     },
     {
       "method": "*",
       "path": "/mcp/read",
-      "surface": null,
-      "why": "Read-only MCP transport for agents. It carries no document a human reader can be shown; Watch already reaches the same HTTP GETs directly."
+      "surface": "/mcp-funnel (door card + GET 405 document; Watch never POSTs JSON-RPC)",
+      "why": null
+    },
+    {
+      "method": "GET",
+      "path": "/api/mcp-funnel",
+      "surface": "/mcp-funnel (the public document is the gate; counts are not reprinted)",
+      "why": null
     },
     {
       "method": "GET",
@@ -139,8 +145,8 @@
     {
       "method": "GET",
       "path": "/api/surface",
-      "surface": null,
-      "why": "Used by this window's build rather than fetched by it: tools/endpoint_coverage.py diffs it against coverage/coverage.json on every PR and once a day. The live page does not call /api/surface at read time."
+      "surface": "/mcp-funnel (MCP route records quoted) + tools/endpoint_coverage.py",
+      "why": null
     },
     {
       "method": "GET",

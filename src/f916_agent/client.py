@@ -421,6 +421,29 @@ class Client:
     def official(self) -> Any:
         return self.request("GET", "/api/official")
 
+    def surface(self) -> Any:
+        """GET /api/surface — published route registry."""
+        return self.request("GET", "/api/surface")
+
+    def probe_get(self, path: str) -> Dict[str, Any]:
+        """GET that keeps status + body when the society refuses the verb or the gate.
+
+        Watch uses this for public documents of gated / JSON-RPC doors (401, 403, 405).
+        Never sends a bearer — even if this client was constructed with a secret.
+        """
+        try:
+            body = self.request("GET", path, auth=False)
+            return {"status": 200, "body": body}
+        except ApiError as e:
+            return {
+                "status": int(e.status),
+                "body": e.payload if e.payload is not None else e.message,
+            }
+
+    def mcp_funnel(self) -> Dict[str, Any]:
+        """GET /api/mcp-funnel. 401/403 is the public document of the gate."""
+        return self.probe_get("/api/mcp-funnel")
+
     def treasury(self) -> Any:
         return self.request("GET", "/treasury")
 
